@@ -1,0 +1,333 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>NodeMCU NeoPixel Segments</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial; text-align: center; margin: 20px; }
+    h1 { color: #333; }
+    p { font-size: 1.2em; }
+    .status {
+      padding: 10px;
+      border: 1px solid #ccc;
+      background-color: #f0f0f0;
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+    .button {
+      background-color: #4CAF50; /* Green */
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    .button.off { background-color: #f44336; /* Red */ }
+    .button.blue { background-color: #008CBA; /* Blue */ }
+    .button.orange { background-color: #ff9800; /* Orange for stop */ }
+    .segment-control, .brightness-control {
+      margin: 10px auto; /* Center segments */
+      display: flex;
+      flex-direction: column; /* Stack controls vertically within a segment */
+      justify-content: center;
+      align-items: center;
+      border: 1px solid #eee;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      max-width: 400px; /* Limit width for better appearance */
+    }
+    .segment-row { /* For horizontal alignment of label, color picker, length slider */
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    .segment-row label {
+      margin-right: 10px;
+      font-weight: bold;
+      min-width: 150px; /* Align labels */
+      text-align: left;
+    }
+    .length-control {
+        display: flex;
+        align-items: center;
+        margin-top: 5px;
+        width: 100%; /* Take full width of segment-control */
+        justify-content: center;
+    }
+    .length-control label {
+        margin-right: 10px;
+        font-weight: bold;
+        min-width: 50px; /* Smaller width for length label */
+        text-align: right;
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 50px; /* Smaller color picker */
+      height: 25px;
+      cursor: pointer;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    input[type="range"] {
+        width: 180px; /* Adjust slider width */
+        margin: 0 10px; /* Spacing for slider */
+    }
+    #message {
+        margin-top: 10px;
+        font-weight: bold;
+        color: green;
+    }
+  </style>
+</head>
+<body>
+
+  <hr>
+
+  <h2>Global Brightness</h2>
+  <div class="brightness-control">
+    <label for="brightnessSlider">Brightness:</label>
+    <input type="range" id="brightnessSlider" min="0" max="100" value="60" oninput="sendBrightness(this.value)">
+    <span id="brightnessValue">60%</span>
+  </div>
+  <hr>
+
+  <h2>Segment Colour & Length Settings</h2>
+  <div id="segmentControls">
+    <div class="segment-control">
+        <div class="segment-row">
+            <label for="seg0Color">Segment 1 (Pixels <span id="seg0Pixels">0-15</span>):</label>
+            <input type="color" id="seg0Color" value="#FF0000">
+        </div>
+        <div class="length-control">
+            <label for="seg0Length">Length:</label>
+            <input type="range" id="seg0Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 0)">
+            <span id="seg0LengthValue">16</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="segment-row">
+            <label for="seg1Color">Segment 2 (Pixels <span id="seg1Pixels">16-31</span>):</label>
+            <input type="color" id="seg1Color" value="#00FF00">
+        </div>
+        <div class="length-control">
+            <label for="seg1Length">Length:</label>
+            <input type="range" id="seg1Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 1)">
+            <span id="seg1LengthValue">16</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="segment-row">
+            <label for="seg2Color">Segment 3 (Pixels <span id="seg2Pixels">32-47</span>):</label>
+            <input type="color" id="seg2Color" value="#0000FF">
+        </div>
+        <div class="length-control">
+            <label for="seg2Length">Length:</label>
+            <input type="range" id="seg2Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 2)">
+            <span id="seg2LengthValue">16</span>
+        <</div>
+    </div>
+    <div class="segment-control">
+        <div class="segment-row">
+            <label for="seg3Color">Segment 4 (Pixels <span id="seg3Pixels">48-63</span>):</label>
+            <input type="color" id="seg3Color" value="#FFFF00">
+        </div>
+        <div class="length-control">
+            <label for="seg3Length">Length:</label>
+            <input type="range" id="seg3Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 3)">
+            <span id="seg3LengthValue">16</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="segment-row">
+            <label for="seg4Color">Segment 5 (Pixels <span id="seg4Pixels">64-79</span>):</label>
+            <input type="color" id="seg4Color" value="#00FFFF">
+        </div>
+        <div class="length-control">
+            <label for="seg4Length">Length:</label>
+            <input type="range" id="seg4Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 4)">
+            <span id="seg4LengthValue">16</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="segment-row">
+            <label for="seg5Color">Segment 6 (Pixels <span id="seg5Pixels">80-98</span>):</label>
+            <input type="color" id="seg5Color" value="#FF00FF">
+        </div>
+        <div class="length-control">
+            <label for="seg5Length">Length:</label>
+            <input type="range" id="seg5Length" min="1" max="99" value="19" oninput="updateLengthLabel(this.value, 5)">
+            <span id="seg5LengthValue">19</span>
+        </div>
+    </div>
+  </div>
+
+  <button class="button" onclick="setSegmentConfig()">Set Segment Colours & Lengths</button>
+  <div id="message"></div>
+
+  <hr>
+  <h2>Blinking Effect</h2>
+  <div class="brightness-control"> <label for="blinkIntervalSlider">Blink Interval:</label>
+      <input type="range" id="blinkIntervalSlider" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateBlinkIntervalDisplay(this.value)">
+      <span id="blinkIntervalValue">1.00s</span>
+      <button class="button blue" onclick="triggerBlink()">Start Blinking</button>
+      <button class="button orange" onclick="stopBlinking()">Stop Blinking</button>
+  </div>
+
+  <script>
+    const MAX_LEDS_TOTAL = 99;
+    let currentSegmentLengths = [16, 16, 16, 16, 16, 19];
+
+    function sendCmd(cmd, callback) {
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          if (callback) {
+            callback(this.responseText);
+          }
+        }
+      };
+      xhttp.open("GET", cmd, true);
+      xhttp.send();
+    }
+
+    function updateLengthLabel(value, segmentIndex) {
+      document.getElementById(`seg${segmentIndex}LengthValue`).innerText = value;
+      currentSegmentLengths[segmentIndex] = parseInt(value);
+      updatePixelRangeLabels();
+    }
+
+    function updatePixelRangeLabels() {
+        let currentPixel = 0;
+        for (let i = 0; i < 6; i++) {
+            let length = currentSegmentLengths[i];
+            let startPixel = currentPixel;
+            let endPixel = Math.min(currentPixel + length - 1, MAX_LEDS_TOTAL - 1);
+
+            let pixelRangeText = "";
+            if (startPixel >= MAX_LEDS_TOTAL) {
+                pixelRangeText = "N/A (out of range)";
+            } else if (endPixel < startPixel) {
+                pixelRangeText = "N/A (empty)";
+            }
+            else {
+                pixelRangeText = `${startPixel}-${endPixel}`;
+            }
+
+            document.getElementById(`seg${i}Pixels`).innerText = pixelRangeText;
+            currentPixel = endPixel + 1;
+        }
+    }
+
+
+    function setSegmentConfig() {
+      let url = "/setSegments?";
+      for (let i = 0; i < 6; i++) {
+        const colorInput = document.getElementById(`seg${i}Color`);
+        const lengthInput = document.getElementById(`seg${i}Length`);
+
+        url += `s${i}=${colorInput.value.substring(1)}`;
+        url += `&l${i}=${lengthInput.value}`;
+        if (i < 5) {
+          url += "&";
+        }
+      }
+
+      console.log("Sending URL:", url);
+      sendCmd(url, function(response) {
+        document.getElementById("message").innerText = response;
+        setTimeout(() => {
+          document.getElementById("message").innerText = "";
+        }, 3000);
+      });
+    }
+
+    // Removed the setAllOnColor function as the element is removed from HTML
+    /*
+    function setAllOnColor() {
+      const colorPicker = document.getElementById('allOnColorPicker');
+      const hexColor = colorPicker.value.substring(1); // Get hex without '#'
+      const url = `/setAllColor?color=${hexColor}`;
+      console.log("Sending Set All Color URL:", url);
+      sendCmd(url, function(response) {
+        document.getElementById("message").innerText = response;
+        setTimeout(() => {
+          document.getElementById("message").innerText = "";
+        }, 3000);
+      });
+    }
+    */
+
+    function sendBrightness(value) {
+      document.getElementById("brightnessValue").innerText = value + "%";
+      const url = `/setBrightness?value=${value}`;
+      console.log("Sending Brightness URL:", url);
+      sendCmd(url);
+    }
+
+    // Function to fetch SSID from the ESP
+    function getSSID() {
+        sendCmd('/ssid', function(response) {
+            document.getElementById('wifiSSID').innerText = response;
+        });
+    }
+
+    // Blinking Feature Functions
+    function updateBlinkIntervalDisplay(value) {
+        console.log("Slider raw value from HTML:", value);
+        const seconds = parseFloat(value).toFixed(2);
+        console.log("Converted seconds to send to ESP:", seconds);
+        document.getElementById("blinkIntervalValue").innerText = seconds + "s";
+        const url = `/setBlinkInterval?value=${seconds}`;
+        console.log("Sending interval URL:", url);
+        sendCmd(url);
+    }
+
+    function triggerBlink() {
+      sendCmd('/triggerBlink', function(response) {
+        document.getElementById("message").innerText = response;
+        setTimeout(() => {
+          document.getElementById("message").innerText = "";
+        }, 3000);
+      });
+    }
+
+    function stopBlinking() {
+      sendCmd('/stopBlink', function(response) {
+        document.getElementById("message").innerText = response;
+        setTimeout(() => {
+          document.getElementById("message").innerText = "";
+        }, 3000);
+      });
+    }
+
+
+    window.onload = function() {
+        sendBrightness(document.getElementById("brightnessSlider").value);
+        for (let i = 0; i < 6; i++) {
+            const lengthSlider = document.getElementById(`seg${i}Length`);
+            lengthSlider.value = currentSegmentLengths[i];
+            document.getElementById(`seg${i}LengthValue`).innerText = currentSegmentLengths[i];
+        }
+        updatePixelRangeLabels();
+        getSSID();
+
+        // Initialize blink interval display and send initial value
+        const initialBlinkInterval = document.getElementById("blinkIntervalSlider").value;
+        updateBlinkIntervalDisplay(initialBlinkInterval);
+    };
+
+  </script>
+</body>
+</html>
