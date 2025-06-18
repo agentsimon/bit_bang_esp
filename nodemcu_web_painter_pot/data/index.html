@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Painter Controller</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .info { background-color: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Painter Controller</h1>
+
+  <div class="info">
+    <p><strong>Connect to this Wi-Fi network:</strong></p>
+    <p>SSID: <span id="ssidDisplay">Loading...</span></p>
+    <p>Password: <span id="passwordDisplay">Loading...</span></p>
+    <p>IP Address: <span id="ipDisplay">Loading...</span></p>
+  </div>
+
+  <h2>Select Image:</h2>
+  <div id="bmpList">Loading BMP files...</div>
+
+  <script>
+    // Function to fetch network info
+    function fetchNetworkInfo() {
+      fetch('/network_info')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('ssidDisplay').innerText = data.ssid;
+          document.getElementById('passwordDisplay').innerText = data.password;
+          document.getElementById('ipDisplay').innerText = data.ip;
+        })
+        .catch(error => console.error('Error fetching network info:', error));
+    }
+
+    // Function to fetch BMP list (existing logic)
+    function fetchBmpList() {
+      fetch('/listbmp')
+        .then(response => response.json())
+        .then(data => {
+          const bmpListDiv = document.getElementById('bmpList');
+          bmpListDiv.innerHTML = ''; // Clear previous content
+          if (data.length === 0) {
+            bmpListDiv.innerText = 'No BMP files found on the device.';
+            return;
+          }
+          data.forEach(filename => {
+            const imgContainer = document.createElement('div');
+            imgContainer.style.display = 'inline-block';
+            imgContainer.style.margin = '10px';
+            imgContainer.style.border = '1px solid #ccc';
+            imgContainer.style.padding = '5px';
+            imgContainer.style.textAlign = 'center';
+
+            const img = document.createElement('img');
+            img.src = '/bmpthumb?filename=' + encodeURIComponent(filename);
+            img.alt = filename;
+            img.style.width = '100px'; // Adjust size as needed
+            img.style.height = '100px';
+            img.style.objectFit = 'contain';
+            img.style.cursor = 'pointer';
+            img.onclick = () => selectImage(filename);
+
+            const fileNameSpan = document.createElement('span');
+            fileNameSpan.innerText = filename;
+            fileNameSpan.style.display = 'block';
+            fileNameSpan.style.marginTop = '5px';
+
+            imgContainer.appendChild(img);
+            imgContainer.appendChild(fileNameSpan);
+            bmpListDiv.appendChild(imgContainer);
+          });
+        })
+        .catch(error => {
+          console.error('Error fetching BMP list:', error);
+          document.getElementById('bmpList').innerText = 'Failed to load BMP files.';
+        });
+    }
+
+    // Function to select an image (existing logic)
+    function selectImage(filename) {
+      fetch('/select_image?filename=' + encodeURIComponent(filename))
+        .then(response => response.text())
+        .then(message => {
+          alert(message);
+          console.log(message);
+        })
+        .catch(error => console.error('Error selecting image:', error));
+    }
+
+    // Call functions on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchNetworkInfo(); // New call
+      fetchBmpList();     // Existing call
+    });
+  </script>
+</body>
+</html>
