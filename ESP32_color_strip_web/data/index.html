@@ -1,0 +1,411 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>NeoPixel Controller</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      margin: 20px;
+      background-color: #f4f4f4;
+      color: #333;
+    }
+    h1 { color: #333; }
+    h2 { color: #0056b3; }
+    p { font-size: 1.2em; }
+    .status {
+      padding: 10px;
+      border: 1px solid #ccc;
+      background-color: #f0f0f0;
+      margin-top: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .button {
+      background-color: #4CAF50; /* Green */
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background-color 0.3s ease;
+    }
+    .button:hover {
+        background-color: #45a049;
+    }
+    .button.off { background-color: #f44336; /* Red */ }
+    .button.off:hover { background-color: #da190b; }
+    .button.blue { background-color: #008CBA; /* Blue */ }
+    .button.blue:hover { background-color: #007bb5; }
+
+    .control-group {
+        margin: 20px auto;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background-color: #ffffff;
+        max-width: 500px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .brightness-control, .blink-control {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+    .segment-control { /* Styles for individual segment containers */
+      margin: 10px auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border: 1px solid #eee;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      max-width: 400px;
+    }
+    .segment-row { /* For horizontal alignment of label, color picker */
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      width: 100%;
+      justify-content: space-between;
+    }
+    .segment-row label {
+      margin-right: 10px;
+      font-weight: bold;
+      min-width: 120px;
+      text-align: left;
+    }
+    .length-control { /* For horizontal alignment of length label, slider, value */
+      display: flex;
+      align-items: center;
+      margin-top: 5px;
+      width: 100%;
+      justify-content: center;
+    }
+    .length-control label {
+      margin-right: 10px;
+      font-weight: bold;
+      min-width: 60px;
+      text-align: right;
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 50px;
+      height: 25px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    input[type="range"] {
+      width: 180px;
+      margin: 0 10px;
+      -webkit-appearance: none;
+      background: #ddd;
+      border-radius: 5px;
+      outline: none;
+      height: 10px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #007bff;
+      cursor: pointer;
+      margin-top: -5px;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+    }
+    #message {
+      margin-top: 10px;
+      padding: 8px;
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      border-radius: 5px;
+      font-weight: bold;
+      display: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>NeoPixel Controller</h1>
+
+  <div class="control-group status">
+    <p><strong>Connect to this Wi-Fi network:</strong></p>
+    <p>SSID: <span id="wifiSSID">Loading...</span></p>
+    <p>Password: <span>123456789</span></p>
+    <p>IP Address: <span id="ipDisplay">Loading...</span></p>
+    <p style="font-weight: bold; color: #d9534f;">Use the physical button on the ESP32 (connected to GPIO13) to toggle the strip ON/OFF.</p>
+  </div>
+
+  <div id="message"></div>
+
+  <div class="control-group">
+    <h2>Global Brightness</h2>
+    <div class="brightness-control">
+      <label for="brightnessSlider">Brightness:</label>
+      <input type="range" id="brightnessSlider" min="0" max="100" value="60">
+      <span id="brightnessValue">60%</span>
+      <button class="button" onclick="setBrightness()">Apply Brightness</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <h2>Segment Colour & Length Settings</h2>
+    <div id="segmentControls">
+      <!-- Segment controls will be dynamically populated by JavaScript -->
+    </div>
+    <button class="button" onclick="setSegmentConfig()">Apply Segment Colours & Lengths</button>
+    <button class="button off" onclick="turnOff()">Turn All Off</button>
+  </div>
+
+
+  <div class="control-group">
+    <h2>Blinking Effect</h2>
+    <div class="blink-control">
+      <label for="blinkIntervalSlider">Blink Interval:</label>
+      <input type="range" id="blinkIntervalSlider" min="0.25" max="2.0" step="0.05" value="1.0">
+      <span id="blinkIntervalValue">1.00s</span>
+      <button class="button blue" onclick="setBlinkInterval()">Activate Blinking</button>
+    </div>
+  </div>
+
+  <script>
+    const NUM_LEDS_TOTAL = 99; // IMPORTANT: This should match NUM_LEDS in Arduino sketch
+    const MAX_SEGMENT_LENGTH_SLIDER = 99; // Max value for individual segment length sliders in UI
+    const NUM_SEGMENTS = 6;
+    const initialSegmentHexColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#00FFFF", "#FF00FF"];
+    const initialSegmentLengths = [8, 8, 8, 8, 9, 9]; // Sums to 50 for NUM_LEDS_TOTAL=50
+
+    // Utility function to send commands via XMLHttpRequest
+    function sendCmd(cmd, successCallback) {
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (this.readyState == 4) {
+          if (this.status == 200) {
+            if (successCallback) {
+              successCallback(this.responseText);
+            }
+          } else {
+            console.error("HTTP request failed: ", this.status, this.responseText);
+            showMessage("Command failed: " + this.responseText, 'error');
+          }
+        }
+      };
+      xhttp.open("GET", cmd, true);
+      xhttp.send();
+    }
+
+    // Function to show a temporary message
+    function showMessage(message, type = 'success') {
+        const msgBox = document.getElementById('message');
+        msgBox.innerText = message;
+        msgBox.className = 'message ' + type;
+        msgBox.style.display = 'block';
+        msgBox.style.opacity = '1';
+
+        if (type === 'success') {
+            msgBox.style.backgroundColor = '#d4edda';
+            msgBox.style.color = '#155724';
+            msgBox.style.borderColor = '#c3e6cb';
+        } else if (type === 'error') {
+            msgBox.style.backgroundColor = '#f8d7da';
+            msgBox.style.color = '#721c24';
+            msgBox.style.borderColor = '#f5c6fb';
+        } else { // info
+            msgBox.style.backgroundColor = '#d1ecf1';
+            msgBox.style.color = '#0c5460';
+            msgBox.style.borderColor = '#bee5eb';
+        }
+
+        setTimeout(() => {
+            msgBox.style.opacity = '0';
+            setTimeout(() => {
+                msgBox.style.display = 'none';
+            }, 500);
+        }, 3000);
+    }
+
+    // Function to update the displayed length value next to slider
+    function updateLengthLabel(value, segmentIndex) {
+      document.getElementById(`seg${segmentIndex}LengthValue`).innerText = value;
+      updatePixelRangeLabels(); // Recalculate pixel ranges whenever a length changes
+    }
+
+    // Function to update the pixel range text for each segment and enforce total LED limit
+    function updatePixelRangeLabels() {
+        let currentPixel = 0;
+        let assignedLengths = []; // Store the effective lengths for each segment
+
+        for (let i = 0; i < NUM_SEGMENTS; i++) {
+            const lengthInput = document.getElementById(`seg${i}Length`);
+            let desiredLength = parseInt(lengthInput ? lengthInput.value : 0);
+
+            let remainingLEDs = NUM_LEDS_TOTAL - currentPixel;
+            let actualLength = Math.min(desiredLength, remainingLEDs);
+            actualLength = Math.max(actualLength, 0); // Ensure length is not negative
+
+            assignedLengths[i] = actualLength;
+
+            // Update the slider's value and display if it was capped
+            if (lengthInput && parseInt(lengthInput.value) !== actualLength) {
+                lengthInput.value = actualLength; // Update the slider itself
+                document.getElementById(`seg${i}LengthValue`).innerText = actualLength; // Update the display span
+            } else if (lengthInput) {
+                 document.getElementById(`seg${i}LengthValue`).innerText = desiredLength; // Keep desired if not capped
+            }
+
+            let startPixel = currentPixel;
+            let endPixel = currentPixel + actualLength - 1;
+
+            let pixelRangeText = "";
+            const pixelDisplaySpan = document.getElementById(`seg${i}Pixels`);
+
+            if (actualLength === 0) { // If segment has 0 actual LEDs
+                pixelRangeText = "N/A (empty)";
+            } else if (startPixel >= NUM_LEDS_TOTAL) { // If segment starts beyond total LEDs
+                pixelRangeText = "N/A (out of range)";
+            } else {
+                pixelRangeText = `${startPixel}-${endPixel}`;
+            }
+
+            if (pixelDisplaySpan) {
+                pixelDisplaySpan.innerText = pixelRangeText;
+            }
+            currentPixel = endPixel + 1;
+        }
+    }
+
+
+    // Function to send segment configurations (colors and lengths)
+    function setSegmentConfig() {
+      let url = "/setSegments?";
+      for (let i = 0; i < NUM_SEGMENTS; i++) {
+        const colorInput = document.getElementById(`seg${i}Color`);
+        const lengthInput = document.getElementById(`seg${i}Length`); // Get the potentially capped value
+
+        url += `s${i}=${colorInput.value.substring(1)}`; // Get hex color without '#'
+        url += `&l${i}=${lengthInput.value}`; // Get length from slider (which might be capped by JS)
+        if (i < NUM_SEGMENTS - 1) {
+          url += "&";
+        }
+      }
+
+      console.log("Sending URL:", url);
+      sendCmd(url, function(response) {
+        showMessage(response);
+      });
+    }
+
+    // Function to send brightness value
+    function setBrightness() {
+      const brightnessValue = document.getElementById("brightnessSlider").value;
+      document.getElementById("brightnessValue").innerText = brightnessValue + "%";
+      const url = `/setBrightness?value=${brightnessValue}`;
+      console.log("Sending Brightness URL:", url);
+      sendCmd(url, function(response) {
+        showMessage(response);
+      });
+    }
+
+    // Function to turn off all LEDs
+    function turnOff() {
+      sendCmd('/off', function(response) {
+        showMessage(response);
+      });
+    }
+
+    // Function to set blink interval (and activate blinking)
+    function setBlinkInterval() {
+      const interval = document.getElementById("blinkIntervalSlider").value;
+      const seconds = parseFloat(interval).toFixed(2);
+      document.getElementById("blinkIntervalValue").innerText = seconds + "s";
+
+      const url = `/setBlinkInterval?value=${seconds}`;
+      console.log("Sending blink interval URL:", url);
+      sendCmd(url, function(response) {
+        showMessage(response);
+      });
+    }
+
+    // Dynamic Segment Control Creation on page load
+    function initializeSegmentControls() {
+        const segmentControlsContainer = document.getElementById('segmentControls');
+        segmentControlsContainer.innerHTML = ''; // Clear existing content
+
+        for (let i = 0; i < NUM_SEGMENTS; i++) {
+            const segmentDiv = document.createElement('div');
+            segmentDiv.className = 'segment-control';
+            segmentDiv.innerHTML = `
+                <div class="segment-row">
+                    <label for="seg${i}Color">Segment ${i + 1} (Pixels <span id="seg${i}Pixels">0-0</span>):</label>
+                    <input type="color" id="seg${i}Color" value="${initialSegmentHexColors[i]}">
+                </div>
+                <div class="length-control">
+                    <label for="seg${i}Length">Length:</label>
+                    <input type="range" id="seg${i}Length" min="1" max="${MAX_SEGMENT_LENGTH_SLIDER}" value="${initialSegmentLengths[i]}">
+                    <span id="seg${i}LengthValue">${initialSegmentLengths[i]}</span>
+                </div>
+            `;
+            segmentControlsContainer.appendChild(segmentDiv);
+
+            // Attach event listener for the length slider to update its value display
+            document.getElementById(`seg${i}Length`).addEventListener('input', (event) => {
+                updateLengthLabel(event.target.value, i);
+            });
+        }
+        updatePixelRangeLabels(); // Initial update of pixel ranges after creation
+    }
+
+
+    window.onload = function() {
+        // Initialize global brightness slider display
+        document.getElementById("brightnessSlider").addEventListener('input', (event) => {
+            document.getElementById("brightnessValue").innerText = event.target.value + "%";
+        });
+        document.getElementById("brightnessValue").innerText = document.getElementById("brightnessSlider").value + "%";
+
+        // Initialize blink interval slider display
+        document.getElementById("blinkIntervalSlider").addEventListener('input', (event) => {
+            document.getElementById("blinkIntervalValue").innerText = parseFloat(event.target.value).toFixed(2) + "s";
+        });
+        document.getElementById("blinkIntervalValue").innerText = parseFloat(document.getElementById("blinkIntervalSlider").value).toFixed(2) + "s";
+
+
+        // Fetch SSID and IP from ESP32
+        sendCmd('/ssid', function(response) {
+            document.getElementById('wifiSSID').innerText = response;
+        });
+        document.getElementById('ipDisplay').innerText = window.location.host;
+
+        // Initialize dynamic segment controls
+        initializeSegmentControls();
+    };
+
+  </script>
+</body>
+</html>
+
