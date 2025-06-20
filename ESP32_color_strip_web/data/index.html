@@ -54,7 +54,7 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    .brightness-control, .blink-control {
+    .brightness-control { /* General style for slider/button groups */
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -88,14 +88,14 @@
       min-width: 120px;
       text-align: left;
     }
-    .length-control { /* For horizontal alignment of length label, slider, value */
+    .length-control, .flash-control { /* For horizontal alignment of length/flash controls */
       display: flex;
       align-items: center;
       margin-top: 5px;
       width: 100%;
       justify-content: center;
     }
-    .length-control label {
+    .length-control label, .flash-control label {
       margin-right: 10px;
       font-weight: bold;
       min-width: 60px;
@@ -134,6 +134,12 @@
       cursor: pointer;
       margin-top: -5px;
       box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+    }
+    input[type="checkbox"] {
+        margin-left: 10px;
+        width: 20px; /* Make checkbox slightly larger */
+        height: 20px;
+        cursor: pointer;
     }
     #message {
       margin-top: 10px;
@@ -183,22 +189,13 @@
   </div>
 
 
-  <div class="control-group">
-    <h2>Blinking Effect</h2>
-    <div class="blink-control">
-      <label for="blinkIntervalSlider">Blink Interval:</label>
-      <input type="range" id="blinkIntervalSlider" min="0.25" max="2.0" step="0.05" value="1.0">
-      <span id="blinkIntervalValue">1.00s</span>
-      <button class="button blue" onclick="setBlinkInterval()">Activate Blinking</button>
-    </div>
-  </div>
-
+  
   <script>
     const NUM_LEDS_TOTAL = 99; // IMPORTANT: This should match NUM_LEDS in Arduino sketch
     const MAX_SEGMENT_LENGTH_SLIDER = 99; // Max value for individual segment length sliders in UI
     const NUM_SEGMENTS = 6;
     const initialSegmentHexColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#00FFFF", "#FF00FF"];
-    const initialSegmentLengths = [8, 8, 8, 8, 9, 9]; // Sums to 50 for NUM_LEDS_TOTAL=50
+    const initialSegmentLengths = [16, 16, 16, 16, 16, 19]; // Adjusted to sum to 99
 
     // Utility function to send commands via XMLHttpRequest
     function sendCmd(cmd, successCallback) {
@@ -255,11 +252,14 @@
       updatePixelRangeLabels(); // Recalculate pixel ranges whenever a length changes
     }
 
+    // Function to update the flash rate display next to slider
+    function updateFlashRateLabel(value, segmentIndex) {
+        document.getElementById(`seg${segmentIndex}FlashRateValue`).innerText = parseFloat(value).toFixed(2) + "s";
+    }
+
     // Function to update the pixel range text for each segment and enforce total LED limit
     function updatePixelRangeLabels() {
         let currentPixel = 0;
-        let assignedLengths = []; // Store the effective lengths for each segment
-
         for (let i = 0; i < NUM_SEGMENTS; i++) {
             const lengthInput = document.getElementById(`seg${i}Length`);
             let desiredLength = parseInt(lengthInput ? lengthInput.value : 0);
@@ -267,8 +267,6 @@
             let remainingLEDs = NUM_LEDS_TOTAL - currentPixel;
             let actualLength = Math.min(desiredLength, remainingLEDs);
             actualLength = Math.max(actualLength, 0); // Ensure length is not negative
-
-            assignedLengths[i] = actualLength;
 
             // Update the slider's value and display if it was capped
             if (lengthInput && parseInt(lengthInput.value) !== actualLength) {
@@ -284,9 +282,9 @@
             let pixelRangeText = "";
             const pixelDisplaySpan = document.getElementById(`seg${i}Pixels`);
 
-            if (actualLength === 0) { // If segment has 0 actual LEDs
+            if (actualLength === 0) {
                 pixelRangeText = "N/A (empty)";
-            } else if (startPixel >= NUM_LEDS_TOTAL) { // If segment starts beyond total LEDs
+            } else if (startPixel >= NUM_LEDS_TOTAL) {
                 pixelRangeText = "N/A (out of range)";
             } else {
                 pixelRangeText = `${startPixel}-${endPixel}`;
@@ -300,15 +298,22 @@
     }
 
 
-    // Function to send segment configurations (colors and lengths)
+    // Function to send segment configurations (colors, lengths, flash status, flash rates)
     function setSegmentConfig() {
       let url = "/setSegments?";
       for (let i = 0; i < NUM_SEGMENTS; i++) {
         const colorInput = document.getElementById(`seg${i}Color`);
-        const lengthInput = document.getElementById(`seg${i}Length`); // Get the potentially capped value
+        const lengthInput = document.getElementById(`seg${i}Length`);
+        const flashCheckbox = document.getElementById(`seg${i}Flash`);
+        const flashRateInput = document.getElementById(`seg${i}FlashRate`);
 
-        url += `s${i}=${colorInput.value.substring(1)}`; // Get hex color without '#'
-        url += `&l${i}=${lengthInput.value}`; // Get length from slider (which might be capped by JS)
+        url += `s${i}=${colorInput.value.substring(1)}`; // Hex color
+        url += `&l${i}=${lengthInput.value}`; // Segment length
+
+        // Flash settings
+        url += `&f${i}=${flashCheckbox.checked ? 'true' : 'false'}`; // Flash boolean
+        url += `&fr${i}=${parseFloat(flashRateInput.value).toFixed(2)}`; // Flash rate
+
         if (i < NUM_SEGMENTS - 1) {
           url += "&";
         }
@@ -338,19 +343,6 @@
       });
     }
 
-    // Function to set blink interval (and activate blinking)
-    function setBlinkInterval() {
-      const interval = document.getElementById("blinkIntervalSlider").value;
-      const seconds = parseFloat(interval).toFixed(2);
-      document.getElementById("blinkIntervalValue").innerText = seconds + "s";
-
-      const url = `/setBlinkInterval?value=${seconds}`;
-      console.log("Sending blink interval URL:", url);
-      sendCmd(url, function(response) {
-        showMessage(response);
-      });
-    }
-
     // Dynamic Segment Control Creation on page load
     function initializeSegmentControls() {
         const segmentControlsContainer = document.getElementById('segmentControls');
@@ -366,16 +358,43 @@
                 </div>
                 <div class="length-control">
                     <label for="seg${i}Length">Length:</label>
-                    <input type="range" id="seg${i}Length" min="1" max="${MAX_SEGMENT_LENGTH_SLIDER}" value="${initialSegmentLengths[i]}">
+                    <input type="range" id="seg${i}Length" min="0" max="${MAX_SEGMENT_LENGTH_SLIDER}" value="${initialSegmentLengths[i]}">
                     <span id="seg${i}LengthValue">${initialSegmentLengths[i]}</span>
+                </div>
+                <div class="flash-control">
+                    <label for="seg${i}Flash">Flash:</label>
+                    <input type="checkbox" id="seg${i}Flash">
+                    <label for="seg${i}FlashRate">Rate:</label>
+                    <input type="range" id="seg${i}FlashRate" min="0.25" max="2.0" step="0.05" value="1.0">
+                    <span id="seg${i}FlashRateValue">1.00s</span>
                 </div>
             `;
             segmentControlsContainer.appendChild(segmentDiv);
 
-            // Attach event listener for the length slider to update its value display
+            // Attach event listener for the length slider
             document.getElementById(`seg${i}Length`).addEventListener('input', (event) => {
                 updateLengthLabel(event.target.value, i);
             });
+            // Attach event listener for the flash rate slider
+            document.getElementById(`seg${i}FlashRate`).addEventListener('input', (event) => {
+                updateFlashRateLabel(event.target.value, i);
+            });
+             // Attach event listener for the flash checkbox to visually update related controls
+             const flashCheckbox = document.getElementById(`seg${i}Flash`);
+             const flashRateInput = document.getElementById(`seg${i}FlashRate`);
+             const flashRateValueSpan = document.getElementById(`seg${i}FlashRateValue`);
+
+             // Initial state based on checkbox
+             if (!flashCheckbox.checked) {
+                 flashRateInput.disabled = true;
+                 flashRateValueSpan.style.opacity = '0.5';
+             }
+             flashCheckbox.addEventListener('change', () => {
+                 flashRateInput.disabled = !flashCheckbox.checked;
+                 flashRateValueSpan.style.opacity = flashCheckbox.checked ? '1' : '0.5';
+             });
+
+            updateFlashRateLabel(flashRateInput.value, i); // Initialize flash rate display
         }
         updatePixelRangeLabels(); // Initial update of pixel ranges after creation
     }
@@ -386,13 +405,8 @@
         document.getElementById("brightnessSlider").addEventListener('input', (event) => {
             document.getElementById("brightnessValue").innerText = event.target.value + "%";
         });
+        document.getElementById("brightnessSlider").value = 60; // Ensure initial value is 60
         document.getElementById("brightnessValue").innerText = document.getElementById("brightnessSlider").value + "%";
-
-        // Initialize blink interval slider display
-        document.getElementById("blinkIntervalSlider").addEventListener('input', (event) => {
-            document.getElementById("blinkIntervalValue").innerText = parseFloat(event.target.value).toFixed(2) + "s";
-        });
-        document.getElementById("blinkIntervalValue").innerText = parseFloat(document.getElementById("blinkIntervalSlider").value).toFixed(2) + "s";
 
 
         // Fetch SSID and IP from ESP32
@@ -408,4 +422,3 @@
   </script>
 </body>
 </html>
-
