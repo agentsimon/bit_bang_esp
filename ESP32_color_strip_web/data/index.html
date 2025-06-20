@@ -4,26 +4,52 @@
   <title>NeoPixel Controller</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
+    /* CSS Variables for easier theme management */
+    :root {
+      --primary-color: #0056b3;
+      --success-button-color: #4CAF50;
+      --success-button-hover-color: #45a049;
+      --danger-button-color: #f44336;
+      --danger-button-hover-color: #da190b;
+      --info-button-color: #008CBA;
+      --info-button-hover-color: #007bb5;
+      --background-color: #f4f4f4;
+      --card-background-color: #ffffff;
+      --border-color: #ddd;
+      --text-color: #333;
+      --light-border-color: #eee;
+      --message-success-bg: #d4edda;
+      --message-success-text: #155724;
+      --message-success-border: #c3e6cb;
+      --message-error-bg: #f8d7da;
+      --message-error-text: #721c24;
+      --message-error-border: #f5c6fb;
+      --message-info-bg: #d1ecf1;
+      --message-info-text: #0c5460;
+      --message-info-border: #bee5eb;
+    }
+
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       text-align: center;
       margin: 20px;
-      background-color: #f4f4f4;
-      color: #333;
+      background-color: var(--background-color);
+      color: var(--text-color);
     }
-    h1 { color: #333; }
-    h2 { color: #0056b3; }
+    h1 { color: var(--text-color); }
+    h2 { color: var(--primary-color); }
     p { font-size: 1.2em; }
+
     .status {
       padding: 10px;
-      border: 1px solid #ccc;
-      background-color: #f0f0f0;
+      border: 1px solid var(--border-color);
+      background-color: var(--light-border-color);
       margin-top: 20px;
       margin-bottom: 20px;
       border-radius: 8px;
     }
     .button {
-      background-color: #4CAF50; /* Green */
+      background-color: var(--success-button-color);
       border: none;
       color: white;
       padding: 15px 32px;
@@ -37,19 +63,19 @@
       transition: background-color 0.3s ease;
     }
     .button:hover {
-        background-color: #45a049;
+        background-color: var(--success-button-hover-color);
     }
-    .button.off { background-color: #f44336; /* Red */ }
-    .button.off:hover { background-color: #da190b; }
-    .button.blue { background-color: #008CBA; /* Blue */ }
-    .button.blue:hover { background-color: #007bb5; }
+    .button.off { background-color: var(--danger-button-color); }
+    .button.off:hover { background-color: var(--danger-button-hover-color); }
+    .button.blue { background-color: var(--info-button-color); }
+    .button.blue:hover { background-color: var(--info-button-hover-color); }
 
     .control-group {
         margin: 20px auto;
         padding: 15px;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border-color);
         border-radius: 10px;
-        background-color: #ffffff;
+        background-color: var(--card-background-color);
         max-width: 500px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
@@ -69,7 +95,7 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      border: 1px solid #eee;
+      border: 1px solid var(--light-border-color);
       padding: 10px;
       margin-bottom: 15px;
       border-radius: 8px;
@@ -144,14 +170,32 @@
     #message {
       margin-top: 10px;
       padding: 8px;
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
       border-radius: 5px;
       font-weight: bold;
       display: none;
       opacity: 0;
       transition: opacity 0.5s ease;
+    }
+    #message.success {
+        background-color: var(--message-success-bg);
+        color: var(--message-success-text);
+        border: 1px solid var(--message-success-border);
+    }
+    #message.error {
+        background-color: var(--message-error-bg);
+        color: var(--message-error-text);
+        border: 1px solid var(--message-error-border);
+    }
+    #message.info {
+        background-color: var(--message-info-bg);
+        color: var(--message-info-text);
+        border: 1px solid var(--message-info-border);
+    }
+    /* Styles for disabled flash rate elements */
+    .flash-control input[type="range"]:disabled,
+    .flash-control span {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
   </style>
 </head>
@@ -161,10 +205,7 @@
 
   <div class="control-group status">
     <p><strong>Connect to this Wi-Fi network:</strong></p>
-    <!-- This can be reoved if you don't want to display the IP and password -->
     <p>SSID: <span id="wifiSSID">Loading...</span></p>
-    <p>Password: <span>123456789</span></p>
-    <p>IP Address: <span id="ipDisplay">Loading...</span></p>
     <p style="font-weight: bold; color: #d9534f;">Use the physical button on the ESP32 (connected to GPIO13) to toggle the strip ON/OFF.</p>
   </div>
 
@@ -189,8 +230,8 @@
     <button class="button off" onclick="turnOff()">Turn All Off</button>
   </div>
 
+  <!-- Removed the entire global Blinking Effect section -->
 
-  
   <script>
     const NUM_LEDS_TOTAL = 99; // IMPORTANT: This should match NUM_LEDS in Arduino sketch
     const MAX_SEGMENT_LENGTH_SLIDER = 99; // Max value for individual segment length sliders in UI
@@ -221,23 +262,9 @@
     function showMessage(message, type = 'success') {
         const msgBox = document.getElementById('message');
         msgBox.innerText = message;
-        msgBox.className = 'message ' + type;
+        msgBox.className = 'message ' + type; // Apply type as a class
         msgBox.style.display = 'block';
         msgBox.style.opacity = '1';
-
-        if (type === 'success') {
-            msgBox.style.backgroundColor = '#d4edda';
-            msgBox.style.color = '#155724';
-            msgBox.style.borderColor = '#c3e6cb';
-        } else if (type === 'error') {
-            msgBox.style.backgroundColor = '#f8d7da';
-            msgBox.style.color = '#721c24';
-            msgBox.style.borderColor = '#f5c6fb';
-        } else { // info
-            msgBox.style.backgroundColor = '#d1ecf1';
-            msgBox.style.color = '#0c5460';
-            msgBox.style.borderColor = '#bee5eb';
-        }
 
         setTimeout(() => {
             msgBox.style.opacity = '0';
@@ -247,18 +274,16 @@
         }, 3000);
     }
 
-    // Function to update the displayed length value next to slider
+    // --- Segment control update functions ---
     function updateLengthLabel(value, segmentIndex) {
       document.getElementById(`seg${segmentIndex}LengthValue`).innerText = value;
-      updatePixelRangeLabels(); // Recalculate pixel ranges whenever a length changes
+      updatePixelRangeLabels();
     }
 
-    // Function to update the flash rate display next to slider
     function updateFlashRateLabel(value, segmentIndex) {
         document.getElementById(`seg${segmentIndex}FlashRateValue`).innerText = parseFloat(value).toFixed(2) + "s";
     }
 
-    // Function to update the pixel range text for each segment and enforce total LED limit
     function updatePixelRangeLabels() {
         let currentPixel = 0;
         for (let i = 0; i < NUM_SEGMENTS; i++) {
@@ -267,14 +292,13 @@
 
             let remainingLEDs = NUM_LEDS_TOTAL - currentPixel;
             let actualLength = Math.min(desiredLength, remainingLEDs);
-            actualLength = Math.max(actualLength, 0); // Ensure length is not negative
+            actualLength = Math.max(actualLength, 0);
 
-            // Update the slider's value and display if it was capped
             if (lengthInput && parseInt(lengthInput.value) !== actualLength) {
-                lengthInput.value = actualLength; // Update the slider itself
-                document.getElementById(`seg${i}LengthValue`).innerText = actualLength; // Update the display span
+                lengthInput.value = actualLength;
+                document.getElementById(`seg${i}LengthValue`).innerText = actualLength;
             } else if (lengthInput) {
-                 document.getElementById(`seg${i}LengthValue`).innerText = desiredLength; // Keep desired if not capped
+                 document.getElementById(`seg${i}LengthValue`).innerText = desiredLength;
             }
 
             let startPixel = currentPixel;
@@ -299,7 +323,7 @@
     }
 
 
-    // Function to send segment configurations (colors, lengths, flash status, flash rates)
+    // --- Send commands to ESP32 ---
     function setSegmentConfig() {
       let url = "/setSegments?";
       for (let i = 0; i < NUM_SEGMENTS; i++) {
@@ -308,12 +332,10 @@
         const flashCheckbox = document.getElementById(`seg${i}Flash`);
         const flashRateInput = document.getElementById(`seg${i}FlashRate`);
 
-        url += `s${i}=${colorInput.value.substring(1)}`; // Hex color
-        url += `&l${i}=${lengthInput.value}`; // Segment length
-
-        // Flash settings
-        url += `&f${i}=${flashCheckbox.checked ? 'true' : 'false'}`; // Flash boolean
-        url += `&fr${i}=${parseFloat(flashRateInput.value).toFixed(2)}`; // Flash rate
+        url += `s${i}=${colorInput.value.substring(1)}`;
+        url += `&l${i}=${lengthInput.value}`;
+        url += `&f${i}=${flashCheckbox.checked ? 'true' : 'false'}`;
+        url += `&fr${i}=${parseFloat(flashRateInput.value).toFixed(2)}`;
 
         if (i < NUM_SEGMENTS - 1) {
           url += "&";
@@ -321,30 +343,24 @@
       }
 
       console.log("Sending URL:", url);
-      sendCmd(url, function(response) {
-        showMessage(response);
-      });
+      sendCmd(url, showMessage);
     }
 
-    // Function to send brightness value
     function setBrightness() {
       const brightnessValue = document.getElementById("brightnessSlider").value;
       document.getElementById("brightnessValue").innerText = brightnessValue + "%";
       const url = `/setBrightness?value=${brightnessValue}`;
       console.log("Sending Brightness URL:", url);
-      sendCmd(url, function(response) {
-        showMessage(response);
-      });
+      sendCmd(url, showMessage);
     }
 
-    // Function to turn off all LEDs
     function turnOff() {
-      sendCmd('/off', function(response) {
-        showMessage(response);
-      });
+      sendCmd('/off', showMessage);
     }
 
-    // Dynamic Segment Control Creation on page load
+    // Removed setBlinkInterval function as global blinking is removed
+
+    // --- Dynamic Segment Control Creation & Event Delegation ---
     function initializeSegmentControls() {
         const segmentControlsContainer = document.getElementById('segmentControls');
         segmentControlsContainer.innerHTML = ''; // Clear existing content
@@ -352,6 +368,8 @@
         for (let i = 0; i < NUM_SEGMENTS; i++) {
             const segmentDiv = document.createElement('div');
             segmentDiv.className = 'segment-control';
+            // Add data attribute for easy access to segment index via event delegation
+            segmentDiv.dataset.segmentIndex = i;
             segmentDiv.innerHTML = `
                 <div class="segment-row">
                     <label for="seg${i}Color">Segment ${i + 1} (Pixels <span id="seg${i}Pixels">0-0</span>):</label>
@@ -372,53 +390,65 @@
             `;
             segmentControlsContainer.appendChild(segmentDiv);
 
-            // Attach event listener for the length slider
-            document.getElementById(`seg${i}Length`).addEventListener('input', (event) => {
-                updateLengthLabel(event.target.value, i);
-            });
-            // Attach event listener for the flash rate slider
-            document.getElementById(`seg${i}FlashRate`).addEventListener('input', (event) => {
-                updateFlashRateLabel(event.target.value, i);
-            });
-             // Attach event listener for the flash checkbox to visually update related controls
-             const flashCheckbox = document.getElementById(`seg${i}Flash`);
-             const flashRateInput = document.getElementById(`seg${i}FlashRate`);
-             const flashRateValueSpan = document.getElementById(`seg${i}FlashRateValue`);
-
-             // Initial state based on checkbox
-             if (!flashCheckbox.checked) {
-                 flashRateInput.disabled = true;
-                 flashRateValueSpan.style.opacity = '0.5';
-             }
-             flashCheckbox.addEventListener('change', () => {
-                 flashRateInput.disabled = !flashCheckbox.checked;
-                 flashRateValueSpan.style.opacity = flashCheckbox.checked ? '1' : '0.5';
-             });
-
-            updateFlashRateLabel(flashRateInput.value, i); // Initialize flash rate display
+            // Initialize flash rate display for newly created segment
+            updateFlashRateLabel(document.getElementById(`seg${i}FlashRate`).value, i);
+            // Initialize disabled state for flash rate input based on checkbox
+            const flashCheckbox = document.getElementById(`seg${i}Flash`);
+            const flashRateInput = document.getElementById(`seg${i}FlashRate`);
+            const flashRateValueSpan = document.getElementById(`seg${i}FlashRateValue`);
+            flashRateInput.disabled = !flashCheckbox.checked;
+            flashRateValueSpan.style.opacity = flashCheckbox.checked ? '1' : '0.5';
         }
         updatePixelRangeLabels(); // Initial update of pixel ranges after creation
+
+        // --- Event Delegation for Segment Controls ---
+        segmentControlsContainer.addEventListener('input', (event) => {
+            const target = event.target;
+            const segmentDiv = target.closest('.segment-control');
+            if (!segmentDiv) return; // Not a segment control element
+
+            const segmentIndex = parseInt(segmentDiv.dataset.segmentIndex);
+
+            if (target.id.startsWith('seg') && target.id.endsWith('Length')) {
+                updateLengthLabel(target.value, segmentIndex);
+            } else if (target.id.startsWith('seg') && target.id.endsWith('FlashRate')) {
+                updateFlashRateLabel(target.value, segmentIndex);
+            } else if (target.id.startsWith('seg') && target.id.endsWith('Flash')) {
+                const flashRateInput = document.getElementById(`seg${segmentIndex}FlashRate`);
+                const flashRateValueSpan = document.getElementById(`seg${segmentIndex}FlashRateValue`);
+                flashRateInput.disabled = !target.checked;
+                flashRateValueSpan.style.opacity = target.checked ? '1' : '0.5';
+            }
+        });
     }
 
 
-    window.onload = function() {
+    window.addEventListener('DOMContentLoaded', () => {
         // Initialize global brightness slider display
-        document.getElementById("brightnessSlider").addEventListener('input', (event) => {
-            document.getElementById("brightnessValue").innerText = event.target.value + "%";
+        const brightnessSlider = document.getElementById("brightnessSlider");
+        const brightnessValueSpan = document.getElementById("brightnessValue");
+        brightnessSlider.addEventListener('input', () => {
+            brightnessValueSpan.innerText = brightnessSlider.value + "%";
         });
-        document.getElementById("brightnessSlider").value = 60; // Ensure initial value is 60
-        document.getElementById("brightnessValue").innerText = document.getElementById("brightnessSlider").value + "%";
+        brightnessValueSpan.innerText = brightnessSlider.value + "%";
+
+        // Removed initialization for global blink interval slider as it's no longer present
+        // const blinkIntervalSlider = document.getElementById("blinkIntervalSlider");
+        // const blinkIntervalValueSpan = document.getElementById("blinkIntervalValue");
+        // blinkIntervalSlider.addEventListener('input', () => {
+        //     blinkIntervalValueSpan.innerText = parseFloat(blinkIntervalSlider.value).toFixed(2) + "s";
+        // });
+        // blinkIntervalValueSpan.innerText = parseFloat(blinkIntervalSlider.value).toFixed(2) + "s";
 
 
-        // Fetch SSID and IP from ESP32
-        sendCmd('/ssid', function(response) {
+        // Fetch SSID from ESP32
+        sendCmd('/ssid', (response) => {
             document.getElementById('wifiSSID').innerText = response;
         });
-        document.getElementById('ipDisplay').innerText = window.location.host;
 
-        // Initialize dynamic segment controls
+        // Initialize dynamic segment controls and attach delegated event listeners
         initializeSegmentControls();
-    };
+    });
 
   </script>
 </body>
