@@ -80,7 +80,7 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    .brightness-control { /* General style for slider/button groups */
+    .slider-control { /* General style for slider/button groups */
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -197,6 +197,12 @@
         opacity: 0.5;
         cursor: not-allowed;
     }
+    /* Styles for global cycle duration sliders when they are inside segmentControls */
+    .segment-controls-global-cycle .slider-control {
+        margin-top: 20px; /* Add some spacing above these sliders */
+        border-top: 1px solid var(--light-border-color); /* Visual separator */
+        padding-top: 15px;
+    }
   </style>
 </head>
 <body>
@@ -206,14 +212,14 @@
   <div class="control-group status">
     <p><strong>Connect to this Wi-Fi network:</strong></p>
     <p>SSID: <span id="wifiSSID">Loading...</span></p>
-    <p style="font-weight: bold; color: #d9534f;">Use the physical button on the ESP32 (connected to GPIO13) to toggle the strip ON/OFF.</p>
+    <p style="font-weight: bold; color: #d9534f;">Use the physical button on the ESP32 (connected to GPIO13) to cycle through display modes.</p>
   </div>
 
   <div id="message"></div>
 
   <div class="control-group">
     <h2>Global Brightness</h2>
-    <div class="brightness-control">
+    <div class="slider-control">
       <label for="brightnessSlider">Brightness:</label>
       <input type="range" id="brightnessSlider" min="0" max="100" value="60">
       <span id="brightnessValue">60%</span>
@@ -222,15 +228,13 @@
   </div>
 
   <div class="control-group">
-    <h2>Segment Colour & Length Settings</h2>
+    <h2>Segment Colour & Display Settings</h2>
     <div id="segmentControls">
       <!-- Segment controls will be dynamically populated by JavaScript -->
     </div>
-    <button class="button" onclick="setSegmentConfig()">Apply Segment Colours & Lengths</button>
+    <button class="button" onclick="applyAllSettings()">Update</button>
     <button class="button off" onclick="turnOff()">Turn All Off</button>
   </div>
-
-  <!-- Removed the entire global Blinking Effect section -->
 
   <script>
     const NUM_LEDS_TOTAL = 99; // IMPORTANT: This should match NUM_LEDS in Arduino sketch
@@ -284,6 +288,7 @@
         document.getElementById(`seg${segmentIndex}FlashRateValue`).innerText = parseFloat(value).toFixed(2) + "s";
     }
 
+    // Function to update the pixel range text for each segment and enforce total LED limit
     function updatePixelRangeLabels() {
         let currentPixel = 0;
         for (let i = 0; i < NUM_SEGMENTS; i++) {
@@ -324,26 +329,29 @@
 
 
     // --- Send commands to ESP32 ---
-    function setSegmentConfig() {
-      let url = "/setSegments?";
-      for (let i = 0; i < NUM_SEGMENTS; i++) {
-        const colorInput = document.getElementById(`seg${i}Color`);
-        const lengthInput = document.getElementById(`seg${i}Length`);
-        const flashCheckbox = document.getElementById(`seg${i}Flash`);
-        const flashRateInput = document.getElementById(`seg${i}FlashRate`);
+    // Function to send ALL settings in one go
+    function applyAllSettings() {
+        let url = "/setAllConfig?"; // Endpoint to handle combined settings
 
-        url += `s${i}=${colorInput.value.substring(1)}`;
-        url += `&l${i}=${lengthInput.value}`;
-        url += `&f${i}=${flashCheckbox.checked ? 'true' : 'false'}`;
-        url += `&fr${i}=${parseFloat(flashRateInput.value).toFixed(2)}`;
+        // Add segment data
+        for (let i = 0; i < NUM_SEGMENTS; i++) {
+            const colorInput = document.getElementById(`seg${i}Color`);
+            const lengthInput = document.getElementById(`seg${i}Length`);
+            const flashCheckbox = document.getElementById(`seg${i}Flash`);
+            const flashRateInput = document.getElementById(`seg${i}FlashRate`);
 
-        if (i < NUM_SEGMENTS - 1) {
-          url += "&";
+            url += `s${i}=${colorInput.value.substring(1)}`; // Hex color
+            url += `&l${i}=${lengthInput.value}`; // Segment length
+            url += `&f${i}=${flashCheckbox.checked ? 'true' : 'false'}`; // Flash boolean
+            url += `&fr${i}=${parseFloat(flashRateInput.value).toFixed(2)}`; // Flash rate
+            url += "&"; // Add separator for next parameter
         }
-      }
+        // Remove trailing '&' if no global parameters are left to add.
+        // Since global parameters are removed, we remove the trailing '&' here.
+        url = url.slice(0, -1);
 
-      console.log("Sending URL:", url);
-      sendCmd(url, showMessage);
+        console.log("Sending ALL Settings URL:", url);
+        sendCmd(url, showMessage);
     }
 
     function setBrightness() {
@@ -358,18 +366,16 @@
       sendCmd('/off', showMessage);
     }
 
-    // Removed setBlinkInterval function as global blinking is removed
-
     // --- Dynamic Segment Control Creation & Event Delegation ---
     function initializeSegmentControls() {
         const segmentControlsContainer = document.getElementById('segmentControls');
         segmentControlsContainer.innerHTML = ''; // Clear existing content
 
+        // Add individual segment controls
         for (let i = 0; i < NUM_SEGMENTS; i++) {
             const segmentDiv = document.createElement('div');
             segmentDiv.className = 'segment-control';
-            // Add data attribute for easy access to segment index via event delegation
-            segmentDiv.dataset.segmentIndex = i;
+            segmentDiv.dataset.segmentIndex = i; // For event delegation
             segmentDiv.innerHTML = `
                 <div class="segment-row">
                     <label for="seg${i}Color">Segment ${i + 1} (Pixels <span id="seg${i}Pixels">0-0</span>):</label>
@@ -399,25 +405,26 @@
             flashRateInput.disabled = !flashCheckbox.checked;
             flashRateValueSpan.style.opacity = flashCheckbox.checked ? '1' : '0.5';
         }
+
         updatePixelRangeLabels(); // Initial update of pixel ranges after creation
 
         // --- Event Delegation for Segment Controls ---
         segmentControlsContainer.addEventListener('input', (event) => {
             const target = event.target;
+            // Check if it's a segment-specific control
             const segmentDiv = target.closest('.segment-control');
-            if (!segmentDiv) return; // Not a segment control element
-
-            const segmentIndex = parseInt(segmentDiv.dataset.segmentIndex);
-
-            if (target.id.startsWith('seg') && target.id.endsWith('Length')) {
-                updateLengthLabel(target.value, segmentIndex);
-            } else if (target.id.startsWith('seg') && target.id.endsWith('FlashRate')) {
-                updateFlashRateLabel(target.value, segmentIndex);
-            } else if (target.id.startsWith('seg') && target.id.endsWith('Flash')) {
-                const flashRateInput = document.getElementById(`seg${segmentIndex}FlashRate`);
-                const flashRateValueSpan = document.getElementById(`seg${segmentIndex}FlashRateValue`);
-                flashRateInput.disabled = !target.checked;
-                flashRateValueSpan.style.opacity = target.checked ? '1' : '0.5';
+            if (segmentDiv) {
+                const segmentIndex = parseInt(segmentDiv.dataset.segmentIndex);
+                if (target.id.startsWith('seg') && target.id.endsWith('Length')) {
+                    updateLengthLabel(target.value, segmentIndex);
+                } else if (target.id.startsWith('seg') && target.id.endsWith('FlashRate')) {
+                    updateFlashRateLabel(target.value, segmentIndex);
+                } else if (target.id.startsWith('seg') && target.id.endsWith('Flash')) {
+                    const flashRateInput = document.getElementById(`seg${segmentIndex}FlashRate`);
+                    const flashRateValueSpan = document.getElementById(`seg${segmentIndex}FlashRateValue`);
+                    flashRateInput.disabled = !target.checked;
+                    flashRateValueSpan.style.opacity = target.checked ? '1' : '0.5';
+                }
             }
         });
     }
@@ -431,15 +438,6 @@
             brightnessValueSpan.innerText = brightnessSlider.value + "%";
         });
         brightnessValueSpan.innerText = brightnessSlider.value + "%";
-
-        // Removed initialization for global blink interval slider as it's no longer present
-        // const blinkIntervalSlider = document.getElementById("blinkIntervalSlider");
-        // const blinkIntervalValueSpan = document.getElementById("blinkIntervalValue");
-        // blinkIntervalSlider.addEventListener('input', () => {
-        //     blinkIntervalValueSpan.innerText = parseFloat(blinkIntervalSlider.value).toFixed(2) + "s";
-        // });
-        // blinkIntervalValueSpan.innerText = parseFloat(blinkIntervalSlider.value).toFixed(2) + "s";
-
 
         // Fetch SSID from ESP32
         sendCmd('/ssid', (response) => {
