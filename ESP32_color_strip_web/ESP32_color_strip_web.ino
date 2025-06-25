@@ -23,8 +23,7 @@ const int NUM_SEGMENTS = 6;   // Number of segments
 CRGB leds[NUM_LEDS]; // FastLED LED buffer
 
 // --- NeoPixel Segment Definitions ---
-// Initial lengths (client-side defaults). Actual lengths constrained by NUM_LEDS.
-int segmentLengths[NUM_SEGMENTS] = {16, 16, 16, 16, 16, 19};
+int segmentLengths[NUM_SEGMENTS] = {16, 16, 16, 16, 16, 19}; // Default lengths
 int segmentStartPixel[NUM_SEGMENTS]; // Start index for each segment
 int segmentEndPixel[NUM_SEGMENTS];   // End index for each segment
 
@@ -45,37 +44,38 @@ volatile bool buttonToggleRequested = false; // Flag set by ISR to request strip
 volatile unsigned long lastButtonPressMillis = 0; // Last time button was debounced
 const unsigned long debounceDelay = 200; // Debounce time in milliseconds
 
-// --- Global State for Strip On/Off ---
-volatile bool stripIsOn = false; // Overall power state of the strip (controlled by physical button)
+// --- Global Strip State Variables ---
+// Mode 0: OFF
+// Mode 1: ON (Static/Segment Flashing)
+// Mode 2: ON (Global ON/OFF Cycling)
+int currentStripMode = 0; // Initial mode is OFF
 
+// --- Global ON/OFF Cycle Variables ---
+unsigned long globalOnDurationMillis = 5000;  // Default 5 seconds ON
+unsigned long globalOffDurationMillis = 2000; // Default 2 seconds OFF
+unsigned long globalCycleLastToggleTime = 0;  // Last time global cycle phase changed
+bool globalCycleIsOnPhase = false;            // True if currently in ON phase of global cycle
 
 // --- Helper function to recalculate segment pixel ranges ---
-// This function updates the start and end pixel indices for each segment
-// ensuring they respect the overall NUM_LEDS limit and segment lengths.
 void updateSegmentPixels() {
     int currentPixel = 0;
     for (int i = 0; i < NUM_SEGMENTS; i++) {
         segmentStartPixel[i] = currentPixel;
-        // Ensure effective length is non-negative
-        int effectiveLength = max(0, segmentLengths[i]);
+        int effectiveLength = max(0, segmentLengths[i]); // Allow 0 length
         int rawEndPixel = currentPixel + effectiveLength - 1;
 
-        // Cap the end pixel at the total number of LEDs
         segmentEndPixel[i] = min(rawEndPixel, NUM_LEDS - 1);
 
-        // If the segment's start pixel is beyond the total LEDs or its effective length is 0,
-        // mark it as an empty segment.
         if (currentPixel >= NUM_LEDS || effectiveLength == 0) {
             segmentStartPixel[i] = currentPixel; // Logical start, but no pixels
             segmentEndPixel[i] = currentPixel - 1; // Mark as empty range
         }
-        currentPixel = segmentEndPixel[i] + 1; // Move to the start of the next segment
+        currentPixel = segmentEndPixel[i] + 1;
     }
-    // Serial.println("Updated Segment Boundaries."); // Reduced debug output
+    // Serial.println("Updated Segment Boundaries.");
 }
 
 // --- Helper function to convert hex string to CRGB color ---
-// Converts a 6-character hex string (e.g., "FF00FF") to a FastLED CRGB color.
 CRGB colorFromHexString(const char* hexString) {
     if (strlen(hexString) != 6) {
         Serial.printf("Invalid hex string length: %s\n", hexString);
@@ -89,39 +89,30 @@ CRGB colorFromHexString(const char* hexString) {
 }
 
 // --- Function to build the LED buffer based on current segment states ---
-// This function populates the 'leds' array (FastLED's internal buffer)
-// based on segment colors and flash states. It does NOT call FastLED.show().
 void updateLedBuffer() {
-    FastLED.clear(); // Start by clearing the entire buffer
+    FastLED.clear(); // Clear the entire buffer before drawing segments
     for (int seg = 0; seg < NUM_SEGMENTS; seg++) {
-      // Only process segments that actually have pixels assigned
-      if (segmentEndPixel[seg] >= segmentStartPixel[seg]) {
+      if (segmentEndPixel[seg] >= segmentStartPixel[seg]) { // Only process if segment has active pixels
         for (int i = segmentStartPixel[seg]; i <= segmentEndPixel[seg]; i++) {
-          // Ensure pixel index is within bounds of the physical strip
           if (i < NUM_LEDS) {
-            // If segment is flashing and currently in its 'OFF' state, set pixel to black
             if (segmentIsFlashing[seg] && !segmentCurrentFlashState[seg]) {
-              leds[i] = CRGB::Black;
-            } else { // Otherwise, set to the segment's defined color
-              leds[i] = currentSegmentColors[seg];
+              leds[i] = CRGB::Black; // If flashing and currently in OFF state
+            } else {
+              leds[i] = currentSegmentColors[seg]; // Static or flashing ON state
             }
           }
         }
       }
     }
-    // Serial.println("LED buffer updated."); // Reduced debug output
+    // Serial.println("LED buffer updated.");
 }
 
-
 // --- Interrupt Service Routine (ISR) for the Button ---
-// This function is called automatically when the button pin goes LOW (pressed).
-// It sets a flag to be processed in the main loop to avoid complex logic in ISR.
 void IRAM_ATTR handleButtonPress() {
-    // Basic debouncing to prevent multiple triggers from a single press
     if (millis() - lastButtonPressMillis > debounceDelay) {
         buttonToggleRequested = true;
         lastButtonPressMillis = millis();
-        Serial.println("Button pressed (ISR detected)."); // Keep for critical feedback
+        Serial.println("Button pressed (ISR detected).");
     }
 }
 
@@ -129,7 +120,7 @@ void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.println("\n--- ESP32 NeoPixel Controller Boot ---");
-  Serial.printf("Free Heap at start: %lu bytes\n", ESP.getFreeHeap()); // Fixed format specifier
+  Serial.printf("Free Heap at start: %lu bytes\n", ESP.getFreeHeap());
 
   // --- FastLED Initialization ---
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
@@ -140,18 +131,17 @@ void setup() {
 
   // Initialize segment colors and flash states
   for (int i = 0; i < NUM_SEGMENTS; i++) {
-      currentSegmentColors[i] = CRGB::Black; // All segments start black
-      segmentLastFlashTime[i] = millis();    // Initialize flash timers for each segment
-      segmentCurrentFlashState[i] = true;    // All flashing segments start in ON state
-      segmentFlashIntervalMillis[i] = 1000;  // Default flash interval
+      currentSegmentColors[i] = CRGB::Black;
+      segmentLastFlashTime[i] = millis();
+      segmentCurrentFlashState[i] = true;
+      segmentFlashIntervalMillis[i] = 1000; // Default 1 second flash interval
   }
   FastLED.clear();
   FastLED.show(); // Ensure strip is physically off at boot
-  stripIsOn = false; // Initial state: strip is off
 
   // --- Configure button pin and interrupt ---
-  pinMode(BUTTON_PIN, INPUT_PULLUP); // Use internal pull-up resistor
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonPress, FALLING); // Trigger on button press
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonPress, FALLING);
   Serial.printf("Button configured on GPIO%d with INPUT_PULLUP and FALLING interrupt.\n", BUTTON_PIN);
 
   // --- WiFi Setup (Access Point) ---
@@ -161,54 +151,32 @@ void setup() {
   WiFi.softAP(ssid, password);
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
-  Serial.println(IP); // Keep for initial setup feedback
+  Serial.println(IP);
   Serial.println("SSID is now visible.");
-  Serial.printf("Free Heap after WiFi setup: %lu bytes\n", ESP.getFreeHeap()); // Fixed format specifier
-
+  Serial.printf("Free Heap after WiFi setup: %lu bytes\n", ESP.getFreeHeap());
 
   // --- Initialize LittleFS ---
   Serial.println("Attempting to mount LittleFS...");
-  // The 'true' parameter formats the filesystem if it fails to mount.
-  // This is good for first-time use or corrupted filesystems, but will erase all data.
-  if (!LittleFS.begin(true)) {
+  if (!LittleFS.begin(true)) { // 'true' attempts to format if mount fails
     Serial.println("LittleFS Mount Failed or Formatted! Attempting to format and remount...");
-    LittleFS.format(); // This will erase all files!
+    LittleFS.format();
     if(!LittleFS.begin()){
       Serial.println("LittleFS mount failed after format! Cannot continue without filesystem.");
-      while(true); // Halt if filesystem still can't be mounted
+      while(true); // Halt on critical error
     }
     Serial.println("LittleFS formatted and remounted successfully.");
   } else {
     Serial.println("LittleFS mounted successfully.");
   }
-
-  // --- List LittleFS files (for debugging) ---
-  Serial.println("Listing files in LittleFS:");
-  File root = LittleFS.open("/");
-  if(root){
-    File file = root.openNextFile();
-    while(file){
-      Serial.print("  FILE: ");
-      Serial.print(file.name());
-      Serial.print("\tSIZE: ");
-      Serial.println(file.size());
-      file = root.openNextFile();
-    }
-  } else {
-    Serial.println("  Failed to open LittleFS root directory.");
-  }
-  Serial.printf("Free Heap after LittleFS operations: %lu bytes\n", ESP.getFreeHeap()); // Fixed format specifier
-
+  Serial.printf("Free Heap after LittleFS operations: %lu bytes\n", ESP.getFreeHeap());
 
   // --- Web Server Routes ---
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    // Serial.println("Client requested root URL '/'"); // Removed frequent print
     if (LittleFS.exists("/index.html")) {
         request->send(LittleFS, "/index.html", "text/html");
-        // Serial.println("  Sent /index.html"); // Removed frequent print
     } else {
         request->send(404, "text/plain", "index.html not found on filesystem!");
-        Serial.println("  ERROR: index.html not found!"); // Keep critical error print
+        Serial.println("  ERROR: index.html not found!");
     }
   });
 
@@ -222,14 +190,14 @@ void setup() {
       currentBrightness = map(brightnessPct, 0, 100, 0, 255);
       FastLED.setBrightness(currentBrightness);
       
-      // Setting brightness implies stopping any active flashing on segments
+      // Setting brightness always implies stopping global cycle and per-segment flashing
+      currentStripMode = 1; // Transition to static/segment flashing mode
+      // Turn off per-segment flashing for all segments
       for(int i=0; i<NUM_SEGMENTS; ++i) segmentIsFlashing[i] = false;
 
-      // Update LED buffer and show immediately if strip is on
-      if (stripIsOn) {
-          updateLedBuffer();
-          FastLED.show();
-      }
+      // Update LED buffer and show immediately
+      updateLedBuffer();
+      FastLED.show();
       Serial.printf("Brightness set to: %d%%\n", brightnessPct);
       request->send(200, "text/plain", "Brightness set!");
     } else {
@@ -237,37 +205,33 @@ void setup() {
     }
   });
 
-  server.on("/setSegments", HTTP_GET, [](AsyncWebServerRequest *request){
-    // Serial.println("Received /setSegments command."); // Removed frequent print
-    bool shouldRedraw = false; // Flag to indicate if LEDs need to be updated
+  // New combined endpoint to receive all segment and global cycle configurations
+  server.on("/setAllConfig", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("Received /setAllConfig command.");
+    bool shouldRedraw = false;
 
+    // Parse Segment Data
     for (int i = 0; i < NUM_SEGMENTS; i++) {
       String paramColorName = "s" + String(i);
       if (request->hasArg(paramColorName)) {
-        // Use c_str() to pass a const char* to avoid String object creation in helper
         CRGB newColor = colorFromHexString(request->arg(paramColorName).c_str());
         if (newColor != currentSegmentColors[i]) {
             currentSegmentColors[i] = newColor;
             shouldRedraw = true;
-            // Serial.printf("  Segment %d color set.\n", i + 1); // Reduced print
         }
       }
 
       String paramLengthName = "l" + String(i);
       if (request->hasArg(paramLengthName)) {
         int newLength = request->arg(paramLengthName).toInt();
-        // Constrain length to be at least 0 and not exceed NUM_LEDS
         if (newLength < 0) newLength = 0;
         if (newLength > NUM_LEDS) newLength = NUM_LEDS;
-
         if (newLength != segmentLengths[i]) {
             segmentLengths[i] = newLength;
             shouldRedraw = true;
-            // Serial.printf("  Segment %d length set.\n", i + 1); // Reduced print
         }
       }
 
-      // Handle flash state (f<idx>)
       String paramFlashName = "f" + String(i);
       if (request->hasArg(paramFlashName)) {
           bool newIsFlashing = (request->arg(paramFlashName) == "true");
@@ -277,15 +241,12 @@ void setup() {
               segmentCurrentFlashState[i] = true; // Start ON
               segmentLastFlashTime[i] = millis();
               shouldRedraw = true;
-              // Serial.printf("  Segment %d flashing set.\n", i + 1); // Reduced print
           }
       }
 
-      // Handle flash rate (fr<idx>)
       String paramFlashRateName = "fr" + String(i);
       if (request->hasArg(paramFlashRateName)) {
           float newFlashRateSeconds = request->arg(paramFlashRateName).toFloat();
-          // Ensure interval is within bounds (0.25 to 2 seconds)
           if (newFlashRateSeconds < 0.25) newFlashRateSeconds = 0.25;
           if (newFlashRateSeconds > 2.0) newFlashRateSeconds = 2.0;
           unsigned long newFlashRateMillis = (unsigned long)(newFlashRateSeconds * 1000.0);
@@ -295,27 +256,38 @@ void setup() {
               segmentLastFlashTime[i] = millis();
               segmentCurrentFlashState[i] = true; // Start ON
               shouldRedraw = true;
-              // Serial.printf("  Segment %d flash rate set.\n", i + 1); // Reduced print
           }
       }
     }
 
-    if (shouldRedraw) {
-        updateSegmentPixels(); // Recalculate segment bounds
-        updateLedBuffer(); // Update buffer with new static or flash settings
-        if(stripIsOn) FastLED.show(); // Show updated state if master is ON
-    } else {
-        // Serial.println("No segment parameters changed."); // Removed frequent print
+    // Parse Global ON/OFF Durations
+    if (request->hasArg("gon")) {
+      globalOnDurationMillis = (unsigned long)(request->arg("gon").toFloat() * 1000.0);
+      Serial.printf("Global ON duration set to: %.1f s (%lu ms)\n", request->arg("gon").toFloat(), globalOnDurationMillis);
     }
-    request->send(200, "text/plain", "Segment configurations updated!");
+    if (request->hasArg("goff")) {
+      globalOffDurationMillis = (unsigned long)(request->arg("goff").toFloat() * 1000.0);
+      Serial.printf("Global OFF duration set to: %.1f s (%lu ms)\n", request->arg("goff").toFloat(), globalOffDurationMillis);
+    }
+    
+    // Always recalculate segment boundaries if anything might have changed
+    updateSegmentPixels(); 
+    
+    // Only update FastLED display if currently in a mode that displays colors
+    // We don't change the currentStripMode here, it's controlled by physical button.
+    if (currentStripMode == 1 || currentStripMode == 2) {
+      updateLedBuffer();
+      FastLED.show();
+    }
+
+    request->send(200, "text/plain", "All configurations updated!");
   });
 
   server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial.println("Received /off command"); // Keep for explicit action
-    FastLED.clear(); // Clear the internal buffer
-    FastLED.show(); // Push black to the strip
-    stripIsOn = false; // Web OFF command sets physical state to OFF
-    // Flashing states persist; only the physical display is off.
+    Serial.println("Received /off command");
+    FastLED.clear();
+    FastLED.show();
+    currentStripMode = 0; // Explicitly set to OFF mode
     Serial.println("Lights OFF (web command).");
     request->send(200, "text/plain", "Lights OFF");
   });
@@ -323,62 +295,102 @@ void setup() {
   server.begin();
   Serial.println("HTTP server started.");
   Serial.printf("Ready. Connect to WiFi SSID: '%s' (Password: '%s') then open a browser to http://%s\n", ssid, password, WiFi.softAPIP().toString().c_str());
-  Serial.printf("Free Heap at end of setup: %lu bytes\n", ESP.getFreeHeap()); // Fixed format specifier
+  Serial.printf("Free Heap at end of setup: %lu bytes\n", ESP.getFreeHeap());
 }
 
 void loop() {
-  // Handle physical button press to toggle strip on/off
+  unsigned long currentMillis = millis(); // Get current time once per loop
+
+  // --- Handle physical button press to toggle strip modes ---
   if (buttonToggleRequested) {
     buttonToggleRequested = false;
-    stripIsOn = !stripIsOn; // Toggle the overall strip state
+    currentStripMode = (currentStripMode + 1) % 3; // Cycle through 0, 1, 2
 
-    if (stripIsOn) {
-      Serial.println("Strip turned ON by physical button.");
-      // When turned ON, reset timers for all flashing segments to start them ON
+    Serial.printf("Button pressed. New mode: %d\n", currentStripMode);
+
+    if (currentStripMode == 0) { // Transition to OFF
+      FastLED.clear();
+      FastLED.show();
+      Serial.println("Transitioned to: OFF.");
+    } else if (currentStripMode == 1) { // Transition to ON (Static/Segment Flashing)
+      // Reset per-segment flash timers to ensure they start in ON state
       for(int i = 0; i < NUM_SEGMENTS; ++i) {
-          segmentCurrentFlashState[i] = true; // Ensure flashing segments start ON
-          segmentLastFlashTime[i] = millis(); // Reset their individual timers
+          segmentCurrentFlashState[i] = true;
+          segmentLastFlashTime[i] = currentMillis; // Reset individual timers
       }
-      updateLedBuffer(); // Populate buffer according to current states
-      FastLED.show(); // Show it
-    } else {
-      Serial.println("Strip turned OFF by physical button.");
-      FastLED.clear(); // Clear the internal buffer
-      FastLED.show(); // Push black to the physical strip
+      updateLedBuffer(); // Populate buffer according to segment settings
+      FastLED.show();
+      Serial.println("Transitioned to: ON (Static/Segment Flashing).");
+    } else if (currentStripMode == 2) { // Transition to ON (Global ON/OFF Cycle)
+      globalCycleIsOnPhase = true; // Start global cycle in ON phase
+      globalCycleLastToggleTime = currentMillis; // Reset global cycle timer
+      // Reset per-segment flash timers to ensure they start in ON state for the global ON phase
+      for(int i = 0; i < NUM_SEGMENTS; ++i) {
+          segmentCurrentFlashState[i] = true;
+          segmentLastFlashTime[i] = currentMillis; // Reset individual timers
+      }
+      updateLedBuffer(); // Populate buffer
+      FastLED.show();
+      Serial.println("Transitioned to: ON (Global ON/OFF Cycling).");
     }
   }
 
-  // --- Main LED Update Logic (only runs if strip is ON) ---
-  if (stripIsOn) {
-    unsigned long currentMillis = millis();
-    bool anySegmentFlashStateChanged = false; // Flag to track if any segment's flash state changed
-
-    // Check individual segments for flash state changes
+  // --- Main LED Update Logic based on current mode ---
+  if (currentStripMode == 1) { // Mode 1: Static/Segment Flashing
+    // Only check individual segments for flash state changes
     for (int i = 0; i < NUM_SEGMENTS; ++i) {
       if (segmentIsFlashing[i]) {
         if (currentMillis - segmentLastFlashTime[i] >= segmentFlashIntervalMillis[i]) {
           segmentLastFlashTime[i] = currentMillis;
           segmentCurrentFlashState[i] = !segmentCurrentFlashState[i]; // Toggle flash state
-          anySegmentFlashStateChanged = true; // Mark that a toggle happened
-          // Serial.printf("Segment %d flash state toggled to %s.\n", i, segmentCurrentFlashState[i] ? "ON" : "OFF"); // Debug for specific segment toggle
         }
       }
     }
-
-    // Only redraw the LEDs if a flash state changed or if the strip was just turned on
-    // (the latter is handled by the buttonToggleRequested block).
-    // For per-segment flashing, it's generally best to always update the buffer and show
-    // if the strip is on, as state changes are frequent.
-    updateLedBuffer();
+    updateLedBuffer(); // Update buffer with latest segment states
     FastLED.show();
-
-    // Add a small delay to yield to other tasks, but keep it tight for good animation fluidity
-    delay(5);
-  } else {
-    // If strip is OFF, ensure it stays off and yield
-    // These are already off, so just yielding is main purpose
-    delay(10);
+    delay(5); // Small delay to yield
+  }
+  else if (currentStripMode == 2) { // Mode 2: Global ON/OFF Cycling
+    if (globalCycleIsOnPhase) { // Currently in ON phase
+      if (currentMillis - globalCycleLastToggleTime >= globalOnDurationMillis) {
+        // Time to switch to OFF phase
+        globalCycleIsOnPhase = false;
+        globalCycleLastToggleTime = currentMillis;
+        FastLED.clear(); // Turn off physical strip
+        FastLED.show();
+        Serial.println("Global Cycle: Switched to OFF phase.");
+      } else {
+        // Still in ON phase, update segment flashes
+        for (int i = 0; i < NUM_SEGMENTS; ++i) {
+          if (segmentIsFlashing[i]) {
+            if (currentMillis - segmentLastFlashTime[i] >= segmentFlashIntervalMillis[i]) {
+              segmentLastFlashTime[i] = currentMillis;
+              segmentCurrentFlashState[i] = !segmentCurrentFlashState[i]; // Toggle individual flash state
+            }
+          }
+        }
+        updateLedBuffer(); // Update buffer based on individual segment flash states
+        FastLED.show();
+      }
+    } else { // Currently in OFF phase
+      if (currentMillis - globalCycleLastToggleTime >= globalOffDurationMillis) {
+        // Time to switch to ON phase
+        globalCycleIsOnPhase = true;
+        globalCycleLastToggleTime = currentMillis;
+        // Reset per-segment flash timers to ensure they start ON for the new global ON phase
+        for(int i = 0; i < NUM_SEGMENTS; ++i) {
+            segmentCurrentFlashState[i] = true;
+            segmentLastFlashTime[i] = currentMillis; // Reset individual timers
+        }
+        updateLedBuffer(); // Turn on physical strip with current segment config
+        FastLED.show();
+        Serial.println("Global Cycle: Switched to ON phase.");
+      }
+      // If still in OFF phase, nothing to do (strip is already clear)
+    }
+    delay(5); // Small delay to yield
+  }
+  else { // Mode 0: OFF
+    delay(10); // Longer yield when completely off
   }
 }
-
-// Removed colorWipe function as it was unused.
