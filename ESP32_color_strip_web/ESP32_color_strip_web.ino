@@ -292,6 +292,49 @@ void setup() {
     request->send(200, "text/plain", "Lights OFF");
   });
 
+/* --------------------------------------------------------------------
+ *  NEW ROUTE – /setAllColor
+ *  ----------------------------------
+ *  GET /setAllColor?color=RRGGBB
+ *  e.g. http://<IP>/setAllColor?color=ff00ff
+ *
+ *  The request must contain the hexadecimal colour string in the
+ *  “color” query‑parameter.  The colour is parsed, written into the
+ *  FastLED buffer and shown immediately if the strip is currently
+ *  ON.  If the strip is OFF the colour is stored and will appear
+ *  the next time the physical button turns the LEDs back on.
+ *  -------------------------------------------------------------------- */
+server.on("/setAllColor", HTTP_GET, [](AsyncWebServerRequest *request){
+  Serial.println("Received /setAllColor command.");
+
+  if (!request->hasArg("color")) {
+    request->send(400, "text/plain", "Color value missing");
+    return;
+  }
+
+  String hexColor = request->arg("color");
+  CRGB newColor = colorFromHexString(hexColor.c_str());          // <-- use your helper
+
+  /* Write the new colour into the internal buffer for *all* LEDs */
+  for (int i = 0; i < NUM_LEDS; ++i) {
+    leds[i] = newColor;
+  }
+
+  /* Show the colour only if the strip is meant to be on */
+ if (currentStripMode == 1 || currentStripMode == 2) {
+    FastLED.show();
+  }
+
+// Stop all segment flashing
+for (int i = 0; i < NUM_SEGMENTS; ++i) {
+    segmentIsFlashing[i] = false;
+}
+  Serial.printf("All LEDs set to #%s (press the button to turn them on)\n",
+                hexColor.c_str());
+  request->send(200, "text/plain",
+                "All LEDs colour updated – press the button to turn on");
+});
+/* -------------------------------------------------------------------- */
   server.begin();
   Serial.println("HTTP server started.");
   Serial.printf("Ready. Connect to WiFi SSID: '%s' (Password: '%s') then open a browser to http://%s\n", ssid, password, WiFi.softAPIP().toString().c_str());
