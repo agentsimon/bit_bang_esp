@@ -1,0 +1,487 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>NodeMCU NeoPixel Segments</title>
+ <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+   <style>
+    /* CSS Variables for easier theme management */
+    :root {
+      --primary-color: #0056b3;
+      --success-button-color: #4CAF50;
+      --success-button-hover-color: #45a049;
+      --danger-button-color: #f44336;
+      --danger-button-hover-color: #da190b;
+      --info-button-color: #008CBA;
+      --info-button-hover-color: #007bb5;
+      --background-color: #f4f4f4;
+      --card-background-color: #ffffff;
+      --border-color: #ddd;
+      --text-color: #333;
+      --light-border-color: #eee;
+      --message-success-bg: #d4edda;
+      --message-success-text: #155724;
+      --message-success-border: #c3e6cb;
+      --message-error-bg: #f8d7da;
+      --message-error-text: #721c24;
+      --message-error-border: #f5c6fb;
+      --message-info-bg: #d1ecf1;
+      --message-info-text: #0c5460;
+      --message-info-border: #bee5eb;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+    h1 { color: var(--text-color); }
+    h2 { color: var(--primary-color); }
+    p { font-size: 1.2em; }
+
+    .status {
+      padding: 10px;
+      border: 1px solid var(--border-color);
+      background-color: var(--light-border-color);
+      margin-top: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .button {
+      background-color: var(--success-button-color);
+      border: none;
+      color: white;
+      padding: 15px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background-color 0.3s ease;
+    }
+    .button:hover {
+        background-color: var(--success-button-hover-color);
+    }
+    .button.off { background-color: var(--danger-button-color); }
+    .button.off:hover { background-color: var(--danger-button-hover-color); }
+    .button.blue { background-color: var(--info-button-color); }
+    .button.blue:hover { background-color: var(--info-button-hover-color); }
+
+    .control-group {
+        margin: 20px auto;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background-color: var(--card-background-color);
+        max-width: 500px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .slider-control { /* General style for slider/button groups */
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+    .segment-control { /* Styles for individual segment containers */
+      margin: 10px auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border: 1px solid var(--light-border-color);
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      max-width: 400px;
+    }
+    .segment-row { /* For horizontal alignment of label, color picker */
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      width: 100%;
+      justify-content: space-between;
+    }
+    .segment-row label {
+      margin-right: 10px;
+      font-weight: bold;
+      min-width: 120px;
+      text-align: left;
+    }
+    .length-control, .flash-control { /* For horizontal alignment of length/flash controls */
+      display: flex;
+      align-items: center;
+      margin-top: 5px;
+      width: 100%;
+      justify-content: center;
+    }
+    .length-control label, .flash-control label {
+      margin-right: 10px;
+      font-weight: bold;
+      min-width: 60px;
+      text-align: right;
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 50px;
+      height: 25px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    input[type="range"] {
+      width: 180px;
+      margin: 0 10px;
+      -webkit-appearance: none;
+      background: #ddd;
+      border-radius: 5px;
+      outline: none;
+      height: 10px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #007bff;
+      cursor: pointer;
+      margin-top: -5px;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+    }
+    input[type="checkbox"] {
+        margin-left: 10px;
+        width: 20px; /* Make checkbox slightly larger */
+        height: 20px;
+        cursor: pointer;
+    }
+    #message {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 5px;
+      font-weight: bold;
+      display: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    #message.success {
+        background-color: var(--message-success-bg);
+        color: var(--message-success-text);
+        border: 1px solid var(--message-success-border);
+    }
+    #message.error {
+        background-color: var(--message-error-bg);
+        color: var(--message-error-text);
+        border: 1px solid var(--message-error-border);
+    }
+    #message.info {
+        background-color: var(--message-info-bg);
+        color: var(--message-info-text);
+        border: 1px solid var(--message-info-border);
+    }
+    /* Styles for disabled flash rate elements */
+    .flash-control input[type="range"]:disabled,
+    .flash-control span {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    /* Styles for global cycle duration sliders when they are inside segmentControls */
+    .segment-controls-global-cycle .slider-control {
+        margin-top: 20px; /* Add some spacing above these sliders */
+        border-top: 1px solid var(--light-border-color); /* Visual separator */
+        padding-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Global Brightness</h2>
+  <div class="brightness-control">
+    <div class="control-row">
+      <label for="brightnessSlider">Brightness:</label>
+      <input type="range" id="brightnessSlider" min="0" max="100" value="60" oninput="sendBrightness(this.value)">
+      <span id="brightnessValue">60%</span>
+    </div>
+  </div>
+  <hr>
+
+  <h2>Dynamic Modes</h2>
+  <div class="dynamic-modes">
+    <button class="button off" id="randomButton">Random</button>
+    <div class="control-row">
+      <label for="randomSpeedSlider">Speed:</label>
+      <input type="range" id="randomSpeedSlider" min="1" max="10" value="1" step="0.5">
+      <span id="randomSpeedValue">1.0 Hz</span>
+    </div>
+    <div class="control-row">
+      <label>Time per change:</label>
+      <span id="randomTimeValue">1.00s</span>
+    </div>
+  </div>
+  <hr>
+
+  <h2>Segment Colour & Length Settings</h2>
+  <div id="segmentControls">
+    <div class="segment-control">
+        <div class="control-row">
+            <label for="seg0Color">Segment 1 (Pixels <span id="seg0Pixels">0-15</span>):</label>
+            <input type="color" id="seg0Color" value="#FF0000">
+        </div>
+        <div class="control-row">
+            <label for="seg0Length">Length:</label>
+            <input type="range" id="seg0Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 0)">
+            <span id="seg0LengthValue">16</span>
+        </div>
+        <div class="flash-controls">
+            <label>Flash:</label>
+            <input type="checkbox" id="seg0Flash">
+            <input type="range" id="seg0FlashRate" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateFlashRateLabel(this.value, 0)">
+            <span id="seg0FlashRateValue">1.00s</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="control-row">
+            <label for="seg1Color">Segment 2 (Pixels <span id="seg1Pixels">16-31</span>):</label>
+            <input type="color" id="seg1Color" value="#00FF00">
+        </div>
+        <div class="control-row">
+            <label for="seg1Length">Length:</label>
+            <input type="range" id="seg1Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 1)">
+            <span id="seg1LengthValue">16</span>
+        </div>
+        <div class="flash-controls">
+            <label>Flash:</label>
+            <input type="checkbox" id="seg1Flash">
+            <input type="range" id="seg1FlashRate" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateFlashRateLabel(this.value, 1)">
+            <span id="seg1FlashRateValue">1.00s</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="control-row">
+            <label for="seg2Color">Segment 3 (Pixels <span id="seg2Pixels">32-47</span>):</label>
+            <input type="color" id="seg2Color" value="#0000FF">
+        </div>
+        <div class="control-row">
+            <label for="seg2Length">Length:</label>
+            <input type="range" id="seg2Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 2)">
+            <span id="seg2LengthValue">16</span>
+        </div>
+        <div class="flash-controls">
+            <label>Flash:</label>
+            <input type="checkbox" id="seg2Flash">
+            <input type="range" id="seg2FlashRate" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateFlashRateLabel(this.value, 2)">
+            <span id="seg2FlashRateValue">1.00s</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="control-row">
+            <label for="seg3Color">Segment 4 (Pixels <span id="seg3Pixels">48-63</span>):</label>
+            <input type="color" id="seg3Color" value="#FFFF00">
+        </div>
+        <div class="control-row">
+            <label for="seg3Length">Length:</label>
+            <input type="range" id="seg3Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 3)">
+            <span id="seg3LengthValue">16</span>
+        </div>
+        <div class="flash-controls">
+            <label>Flash:</label>
+            <input type="checkbox" id="seg3Flash">
+            <input type="range" id="seg3FlashRate" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateFlashRateLabel(this.value, 3)">
+            <span id="seg3FlashRateValue">1.00s</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="control-row">
+            <label for="seg4Color">Segment 5 (Pixels <span id="seg4Pixels">64-79</span>):</label>
+            <input type="color" id="seg4Color" value="#00FFFF">
+        </div>
+        <div class="control-row">
+            <label for="seg4Length">Length:</label>
+            <input type="range" id="seg4Length" min="1" max="99" value="16" oninput="updateLengthLabel(this.value, 4)">
+            <span id="seg4LengthValue">16</span>
+        </div>
+        <div class="flash-controls">
+            <label>Flash:</label>
+            <input type="checkbox" id="seg4Flash">
+            <input type="range" id="seg4FlashRate" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateFlashRateLabel(this.value, 4)">
+            <span id="seg4FlashRateValue">1.00s</span>
+        </div>
+    </div>
+    <div class="segment-control">
+        <div class="control-row">
+            <label for="seg5Color">Segment 6 (Pixels <span id="seg5Pixels">80-98</span>):</label>
+            <input type="color" id="seg5Color" value="#FF00FF">
+        </div>
+        <div class="control-row">
+            <label for="seg5Length">Length:</label>
+            <input type="range" id="seg5Length" min="1" max="99" value="19" oninput="updateLengthLabel(this.value, 5)">
+            <span id="seg5LengthValue">19</span>
+        </div>
+        <div class="flash-controls">
+            <label>Flash:</label>
+            <input type="checkbox" id="seg5Flash">
+            <input type="range" id="seg5FlashRate" min="0.25" max="2.0" step="0.05" value="1.0" oninput="updateFlashRateLabel(this.value, 5)">
+            <span id="seg5FlashRateValue">1.00s</span>
+        </div>
+    </div>
+  </div>
+
+  <button class="button" onclick="setSegmentConfig()">Set Segment Colours & Lengths</button>
+  <div id="message"></div>
+
+  <hr>
+  <h2>Quick Actions</h2>
+
+  <button class="button off" onclick="sendCmd('/off')">All OFF</button>
+  
+  <script>
+    const MAX_LEDS_TOTAL = 99;  
+    let currentSegmentLengths = [16, 16, 16, 16, 16, 19];  
+    let isBlendOn = false; // Kept as a placeholder if needed later
+    let perSegmentFlashEnabled = [false, false, false, false, false, false];
+    let perSegmentFlashRates = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+
+    function sendCmd(cmd, callback) {
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          if (callback) {
+            callback(this.responseText);
+          }
+        }
+      };
+      xhttp.open("GET", cmd, true);
+      xhttp.send();
+    }
+
+    function updateLengthLabel(value, segmentIndex) {
+      document.getElementById(`seg${segmentIndex}LengthValue`).innerText = value;
+      currentSegmentLengths[segmentIndex] = parseInt(value);  
+      updatePixelRangeLabels();  
+    }
+    
+    function updateFlashRateLabel(value, segmentIndex) {
+      const floatValue = parseFloat(value);
+      document.getElementById(`seg${segmentIndex}FlashRateValue`).innerText = floatValue.toFixed(2) + "s";
+      perSegmentFlashRates[segmentIndex] = floatValue;
+    }
+
+    function updatePixelRangeLabels() {
+        let currentPixel = 0;
+        for (let i = 0; i < 6; i++) {
+            let length = currentSegmentLengths[i];
+            let startPixel = currentPixel;
+            let endPixel = Math.min(currentPixel + length - 1, MAX_LEDS_TOTAL - 1);  
+
+            let pixelRangeText = "";
+            if (startPixel >= MAX_LEDS_TOTAL) {  
+                pixelRangeText = "N/A (out of range)";
+            } else if (endPixel < startPixel) {  
+                pixelRangeText = "N/A (empty)";
+            }
+            else {
+                pixelRangeText = `${startPixel}-${endPixel}`;
+            }
+            
+            document.getElementById(`seg${i}Pixels`).innerText = pixelRangeText;
+            currentPixel = endPixel + 1;  
+        }
+    }
+
+
+    function setSegmentConfig() {
+      let url = "/setAllConfig?";  
+      for (let i = 0; i < 6; i++) {
+        const colorInput = document.getElementById(`seg${i}Color`);
+        const lengthInput = document.getElementById(`seg${i}Length`);  
+        const flashCheckbox = document.getElementById(`seg${i}Flash`);
+        const flashRateInput = document.getElementById(`seg${i}FlashRate`);
+        
+        url += `s${i}=${colorInput.value.substring(1)}`;  
+        url += `&l${i}=${lengthInput.value}`;  
+        url += `&f${i}=${flashCheckbox.checked}`;
+        url += `&fr${i}=${flashRateInput.value}`;
+        if (i < 5) {
+          url += "&";
+        }
+      }
+      
+      console.log("Sending URL:", url);
+      sendCmd(url, function(response) {
+        document.getElementById("message").innerText = response;
+        setTimeout(() => {
+          document.getElementById("message").innerText = "";
+        }, 3000);
+      });
+    }
+
+    function sendBrightness(value) {
+      document.getElementById("brightnessValue").innerText = value + "%";
+      const url = `/setBrightness?value=${value}`;
+      console.log("Sending Brightness URL:", url);
+      sendCmd(url);  
+    }
+
+    const randomButton = document.getElementById('randomButton');
+    const randomSpeedSlider = document.getElementById('randomSpeedSlider');
+    const randomSpeedValue = document.getElementById('randomSpeedValue');
+    const randomTimeValue = document.getElementById('randomTimeValue');
+
+    randomButton.addEventListener('click', function() {
+      if (this.classList.contains('off')) {
+        // It's off, turn it on
+        sendCmd('/random');
+        this.classList.remove('off');
+        this.classList.add('on');
+        this.textContent = 'Stop Random';
+      } else {
+        // It's on, turn it off
+        sendCmd('/off');
+        this.classList.remove('on');
+        this.classList.add('off');
+        this.textContent = 'Random';
+      }
+    });
+
+    randomSpeedSlider.addEventListener('input', function() {
+      const speedHz = parseFloat(this.value);
+      const timeSec = (1 / speedHz);
+      randomSpeedValue.textContent = `${speedHz.toFixed(1)} Hz`;
+      randomTimeValue.textContent = `${timeSec.toFixed(2)}s`;
+
+      if (randomButton.classList.contains('on')) {
+        sendCmd(`/setRandomSpeed?value=${speedHz}`);
+      }
+    });
+
+
+    window.onload = function() {
+        sendBrightness(document.getElementById("brightnessSlider").value);
+        for (let i = 0; i < 6; i++) {
+            const lengthSlider = document.getElementById(`seg${i}Length`);
+            lengthSlider.value = currentSegmentLengths[i];  
+            document.getElementById(`seg${i}LengthValue`).innerText = currentSegmentLengths[i];
+
+            // Initialize flash rate display
+            const flashRateSlider = document.getElementById(`seg${i}FlashRate`);
+            flashRateSlider.value = perSegmentFlashRates[i];
+            updateFlashRateLabel(perSegmentFlashRates[i], i);
+        }
+        updatePixelRangeLabels();  
+    };
+  </script>
+</body>
+</html>
