@@ -17,8 +17,8 @@ const int LED_PIN = 4;
 const int NUM_LEDS = 99;
 const int NUM_SEGMENTS = 6;
 
-#define LED_TYPE            WS2812B
-#define COLOR_ORDER         GRB
+#define LED_TYPE WS2812B
+#define COLOR_ORDER GRB
 
 CRGB leds[NUM_LEDS];
 
@@ -26,7 +26,6 @@ CRGB leds[NUM_LEDS];
 int segmentLengths[NUM_SEGMENTS] = {16, 16, 16, 16, 16, 19};
 int segmentStartPixel[NUM_SEGMENTS];
 int segmentEndPixel[NUM_SEGMENTS];
-
 CRGB currentSegmentColors[NUM_SEGMENTS];
 
 // --- Per-Segment Flashing Variables ---
@@ -35,7 +34,7 @@ unsigned long segmentFlashIntervalMillis[NUM_SEGMENTS];
 unsigned long segmentLastFlashTime[NUM_SEGMENTS];
 bool segmentCurrentFlashState[NUM_SEGMENTS];
 
-// Global variable for overall brightness
+// --- Global variable for overall brightness ---
 uint8_t currentBrightness = 153;
 
 // --- Physical Button Configuration ---
@@ -46,9 +45,8 @@ const unsigned long debounceDelay = 200;
 
 // --- Global Strip State Variables ---
 // Mode 0: OFF
-// Mode 1: ON (Static/Segment Flashing)
+// Mode 1: ON (Static/Segment Flashing/Random)
 // Mode 2: ON (Global ON/OFF Cycling)
-// Mode 3: ON (Random Color Mode)
 int currentStripMode = 0;
 
 // --- Global ON/OFF Cycle Variables ---
@@ -57,10 +55,10 @@ unsigned long globalOffDurationMillis = 2000;
 unsigned long globalCycleLastToggleTime = 0;
 bool globalCycleIsOnPhase = false;
 
-// --- New Random Color Mode Variables ---
-bool randomColorModeEnabled = false;
-unsigned long randomSpeedMillis = 1000;
-unsigned long lastRandomChangeTime = 0;
+// --- Per-Segment Random Mode Variables ---
+bool segmentIsRandom[NUM_SEGMENTS] = {false};
+unsigned long segmentRandomSpeedMillis[NUM_SEGMENTS];
+unsigned long segmentLastRandomChangeTime[NUM_SEGMENTS];
 
 // --- Helper function to recalculate segment pixel ranges ---
 void updateSegmentPixels() {
@@ -71,7 +69,6 @@ void updateSegmentPixels() {
         int rawEndPixel = currentPixel + effectiveLength - 1;
 
         segmentEndPixel[i] = min(rawEndPixel, NUM_LEDS - 1);
-
         if (currentPixel >= NUM_LEDS || effectiveLength == 0) {
             segmentStartPixel[i] = currentPixel;
             segmentEndPixel[i] = currentPixel - 1;
@@ -127,11 +124,15 @@ void setup() {
   FastLED.setBrightness(currentBrightness);
   updateSegmentPixels();
 
+  randomSeed(analogRead(A0));
+
   for (int i = 0; i < NUM_SEGMENTS; i++) {
       currentSegmentColors[i] = CRGB::Black;
       segmentLastFlashTime[i] = millis();
       segmentCurrentFlashState[i] = true;
       segmentFlashIntervalMillis[i] = 1000;
+      segmentRandomSpeedMillis[i] = 1000;
+      segmentLastRandomChangeTime[i] = 0;
   }
   FastLED.clear();
   FastLED.show();
@@ -159,10 +160,6 @@ void setup() {
     }
   });
 
-  server.on("/ssid", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", ssid);
-  });
-
   server.on("/setBrightness", HTTP_GET, [](AsyncWebServerRequest *request){
     if (request->hasArg("value")) {
       int brightnessPct = request->arg("value").toInt();
@@ -177,7 +174,6 @@ void setup() {
 
   server.on("/setAllConfig", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial.println("Received /setAllConfig command.");
-    randomColorModeEnabled = false;
     
     // Parse Segment Data
     for (int i = 0; i < NUM_SEGMENTS; i++) {
@@ -217,12 +213,25 @@ void setup() {
               segmentCurrentFlashState[i] = true;
           }
       }
+      
+      String paramRandomName = "r" + String(i);
+      if (request->hasArg(paramRandomName)) {
+          segmentIsRandom[i] = (request->arg(paramRandomName) == "true");
+      }
+      
+      String paramRandomSpeedName = "rs" + String(i);
+      if (request->hasArg(paramRandomSpeedName)) {
+          float newSpeed = request->arg(paramRandomSpeedName).toFloat();
+          if (newSpeed < 0.5) newSpeed = 0.5;
+          if (newSpeed > 10.0) newSpeed = 10.0;
+          segmentRandomSpeedMillis[i] = (unsigned long)(1000.0 / newSpeed);
+      }
     }
     
     updateSegmentPixels();
+    currentStripMode = 1;
     updateLedBuffer();
     FastLED.show();
-    currentStripMode = 1;
 
     request->send(200, "text/plain", "All configurations updated!");
   });
@@ -231,7 +240,10 @@ void setup() {
     FastLED.clear();
     FastLED.show();
     currentStripMode = 0;
-    randomColorModeEnabled = false;
+    for (int i = 0; i < NUM_SEGMENTS; i++) {
+        segmentIsRandom[i] = false;
+        segmentIsFlashing[i] = false;
+    }
     request->send(200, "text/plain", "Lights OFF");
   });
 
@@ -248,30 +260,14 @@ void setup() {
     if (currentStripMode == 1 || currentStripMode == 2) {
         FastLED.show();
     }
+    
     for (int i = 0; i < NUM_SEGMENTS; ++i) {
         segmentIsFlashing[i] = false;
+        segmentIsRandom[i] = false;
     }
-    randomColorModeEnabled = false;
     request->send(200, "text/plain", "All LEDs colour updated");
   });
-  
-  server.on("/random", HTTP_GET, [](AsyncWebServerRequest *request) {
-    currentStripMode = 3;
-    randomColorModeEnabled = true;
-    randomSeed(analogRead(A0));
-    request->send(200, "text/plain", "Random mode enabled!");
-  });
-
-  server.on("/setRandomSpeed", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (request->hasArg("value")) {
-      float speedVal = request->arg("value").toFloat();
-      randomSpeedMillis = (unsigned long)(1000 / speedVal);
-      request->send(200, "text/plain", "Random speed set!");
-    } else {
-      request->send(400, "text/plain", "Speed value missing");
-    }
-  });
-
+    
   server.begin();
   Serial.println("HTTP server started.");
 }
@@ -281,93 +277,78 @@ void loop() {
 
   if (buttonToggleRequested) {
     buttonToggleRequested = false;
-    currentStripMode = (currentStripMode + 1) % 4;
-    
-    if (currentStripMode == 0) {
+    currentStripMode = (currentStripMode + 1) % 3; // Swapped to 3 modes.
+
+    if (currentStripMode == 0) { // OFF
       FastLED.clear();
       FastLED.show();
-      randomColorModeEnabled = false;
-    } else if (currentStripMode == 1) {
+      for (int i = 0; i < NUM_SEGMENTS; i++) {
+        segmentIsRandom[i] = false;
+      }
+    } else if (currentStripMode == 1) { // ON (Static/Flashing/Random)
       for(int i = 0; i < NUM_SEGMENTS; ++i) {
           segmentCurrentFlashState[i] = true;
           segmentLastFlashTime[i] = currentMillis;
+          segmentIsRandom[i] = false;
+          segmentIsFlashing[i] = false;
       }
-      randomColorModeEnabled = false;
       updateLedBuffer();
       FastLED.show();
-    } else if (currentStripMode == 2) {
+    } else if (currentStripMode == 2) { // Global Cycle
       globalCycleIsOnPhase = true;
       globalCycleLastToggleTime = currentMillis;
       for(int i = 0; i < NUM_SEGMENTS; ++i) {
           segmentCurrentFlashState[i] = true;
           segmentLastFlashTime[i] = currentMillis;
+          segmentIsRandom[i] = false;
+          segmentIsFlashing[i] = false;
       }
-      randomColorModeEnabled = false;
       updateLedBuffer();
       FastLED.show();
-    } else if (currentStripMode == 3) {
-      randomColorModeEnabled = true;
-      lastRandomChangeTime = currentMillis;
     }
   }
 
-  if (currentStripMode == 1) {
-    for (int i = 0; i < NUM_SEGMENTS; ++i) {
+  // Handle Per-Segment Random Color Changes
+  bool needsUpdate = false;
+  for (int i = 0; i < NUM_SEGMENTS; ++i) {
+      if (segmentIsRandom[i] && currentMillis - segmentLastRandomChangeTime[i] >= segmentRandomSpeedMillis[i]) {
+          segmentLastRandomChangeTime[i] = currentMillis;
+          currentSegmentColors[i] = CHSV(random8(), 255, 255);
+          needsUpdate = true;
+      }
+  }
+  // Handle Per-Segment Flashing
+  for (int i = 0; i < NUM_SEGMENTS; ++i) {
       if (segmentIsFlashing[i]) {
         if (currentMillis - segmentLastFlashTime[i] >= segmentFlashIntervalMillis[i]) {
           segmentLastFlashTime[i] = currentMillis;
           segmentCurrentFlashState[i] = !segmentCurrentFlashState[i];
+          needsUpdate = true;
         }
       }
-    }
+  }
+
+  if (needsUpdate) {
     updateLedBuffer();
     FastLED.show();
-    delay(5);
   }
-  else if (currentStripMode == 2) {
+  
+  // Handle Global ON/OFF Cycle
+  if (currentStripMode == 2) {
     if (globalCycleIsOnPhase) {
       if (currentMillis - globalCycleLastToggleTime >= globalOnDurationMillis) {
         globalCycleIsOnPhase = false;
         globalCycleLastToggleTime = currentMillis;
         FastLED.clear();
         FastLED.show();
-      } else {
-        for (int i = 0; i < NUM_SEGMENTS; ++i) {
-          if (segmentIsFlashing[i]) {
-            if (currentMillis - segmentLastFlashTime[i] >= segmentFlashIntervalMillis[i]) {
-              segmentLastFlashTime[i] = currentMillis;
-              segmentCurrentFlashState[i] = !segmentCurrentFlashState[i];
-            }
-          }
-        }
-        updateLedBuffer();
-        FastLED.show();
       }
     } else {
       if (currentMillis - globalCycleLastToggleTime >= globalOffDurationMillis) {
         globalCycleIsOnPhase = true;
         globalCycleLastToggleTime = currentMillis;
-        for(int i = 0; i < NUM_SEGMENTS; ++i) {
-            segmentCurrentFlashState[i] = true;
-            segmentLastFlashTime[i] = currentMillis;
-        }
         updateLedBuffer();
         FastLED.show();
       }
     }
-    delay(5);
-  }
-  else if (currentStripMode == 3) {
-    if (currentMillis - lastRandomChangeTime >= randomSpeedMillis) {
-      lastRandomChangeTime = currentMillis;
-      for (int i = 0; i < NUM_LEDS; ++i) {
-        leds[i] = CHSV(random8(), 255, 255);
-      }
-      FastLED.show();
-    }
-    delay(5);
-  }
-  else {
-    delay(10);
   }
 }
